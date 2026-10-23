@@ -49,6 +49,18 @@ function normalizeField(value: unknown, fallback: string) {
   return typeof value === 'string' && value.trim() ? value : fallback;
 }
 
+function readPayload(data: Record<string, unknown> | undefined, keys: string[]) {
+  if (!data) return undefined;
+
+  for (const key of keys) {
+    if (key in data && data[key] !== undefined && data[key] !== null && String(data[key]).trim() !== '') {
+      return data[key];
+    }
+  }
+
+  return undefined;
+}
+
 export async function fetchVehicleRecord(input: VehicleRequest): Promise<VehicleResult> {
   const baseUrl = process.env.VEHICLE_API_BASE_URL;
 
@@ -62,13 +74,13 @@ export async function fetchVehicleRecord(input: VehicleRequest): Promise<Vehicle
       Accept: 'application/json',
     };
 
-    const apiKey = process.env.VEHICLE_API_KEY;
+    const token = process.env.VEHICLE_API_KEY || process.env.VEHICLE_API_TOKEN;
     const apiSecret = process.env.VEHICLE_API_SECRET;
     const username = process.env.VEHICLE_API_USERNAME;
     const password = process.env.VEHICLE_API_PASSWORD;
 
-    if (apiKey) {
-      headers.Authorization = `Bearer ${apiKey}`;
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
     }
 
     if (apiSecret) {
@@ -80,13 +92,15 @@ export async function fetchVehicleRecord(input: VehicleRequest): Promise<Vehicle
       headers['X-API-Password'] = password;
     }
 
-    const response = await fetch(`${baseUrl.replace(/\/$/, '')}/rc/verify`, {
+    const endpoint = `${baseUrl.replace(/\/$/, '')}/rc/rc-v2`;
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        registrationNumber: input.registrationNumber,
-        chassisNumber: input.chassisNumber,
-        engineNumber: input.engineNumber,
+        id_number: input.registrationNumber,
+        enrich: false,
+        ...(input.chassisNumber ? { chassis_number: input.chassisNumber } : {}),
+        ...(input.engineNumber ? { engine_number: input.engineNumber } : {}),
       }),
     });
 
@@ -95,18 +109,30 @@ export async function fetchVehicleRecord(input: VehicleRequest): Promise<Vehicle
     }
 
     const payload = (await response.json()) as Record<string, unknown>;
+    const data = (payload.data as Record<string, unknown>) || payload;
 
     return {
-      registrationNumber: normalizeField(payload.registrationNumber, input.registrationNumber.toUpperCase()),
-      status: normalizeField(payload.status, 'Active / Verified'),
-      ownerName: normalizeField(payload.ownerName, 'Owner not returned'),
-      make: normalizeField(payload.make, 'Vehicle'),
-      model: normalizeField(payload.model, 'Model'),
-      fuelType: normalizeField(payload.fuelType, 'Unknown'),
-      registrationDate: normalizeField(payload.registrationDate, 'Not available'),
-      insuranceStatus: normalizeField(payload.insuranceStatus, 'Unknown'),
-      fitnessStatus: normalizeField(payload.fitnessStatus, 'Unknown'),
-      verificationScore: typeof payload.verificationScore === 'number' ? payload.verificationScore : 92,
+      registrationNumber: normalizeField(
+        readPayload(data, ['rc_number', 'registrationNumber', 'id_number', 'registration_number']),
+        input.registrationNumber.toUpperCase()
+      ),
+      status: normalizeField(readPayload(data, ['status', 'verification_status', 'rc_status']), 'Active / Verified'),
+      ownerName: normalizeField(
+        readPayload(data, ['owner_name', 'ownerName', 'name', 'registered_owner']),
+        'Owner not returned'
+      ),
+      make: normalizeField(readPayload(data, ['make', 'manufacturer', 'vehicle_make']), 'Vehicle'),
+      model: normalizeField(readPayload(data, ['model', 'vehicle_model']), 'Model'),
+      fuelType: normalizeField(readPayload(data, ['fuel_type', 'fuelType']), 'Unknown'),
+      registrationDate: normalizeField(
+        readPayload(data, ['registration_date', 'registrationDate', 'registered_on']),
+        'Not available'
+      ),
+      insuranceStatus: normalizeField(readPayload(data, ['insurance_status', 'insuranceStatus']), 'Unknown'),
+      fitnessStatus: normalizeField(readPayload(data, ['fitness_status', 'fitnessStatus']), 'Unknown'),
+      verificationScore: typeof readPayload(data, ['verification_score', 'verificationScore']) === 'number'
+        ? Number(readPayload(data, ['verification_score', 'verificationScore']))
+        : 92,
       source: 'Live sandbox API',
       warnings: Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean).map(String) : [],
     };

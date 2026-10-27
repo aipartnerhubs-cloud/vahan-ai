@@ -1,143 +1,135 @@
-export type VehicleRequest = {
-  registrationNumber: string;
-  chassisNumber?: string;
-  engineNumber?: string;
+import { NextResponse } from 'next/server';
+
+import { getRateLimitConfig } from '@/lib/server-config';
+import { VehicleServiceError, fetchVehicleRecord, isValidRegistrationNumber, normalizeRegistrationNumber } from '@/lib/vehicle-service';
+
+type RateLimitEntry = {
+  count: number;
+  resetAt: number;
 };
 
-export type VehicleResult = {
-  registrationNumber: string;
-  status: string;
-  ownerName: string;
-  make: string;
-  model: string;
-  fuelType: string;
-  registrationDate: string;
-  insuranceStatus: string;
-  fitnessStatus: string;
-  verificationScore: number;
-  source: string;
-  warnings?: string[];
-};
+const rateLimitStore = new Map<string, RateLimitEntry>();
 
-function getRandomInt(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-export function buildMockVehicleResult(input: VehicleRequest): VehicleResult {
-  const reg = input.registrationNumber.toUpperCase();
-  const score = getRandomInt(84, 97);
-
-  return {
-    registrationNumber: reg,
-    status: 'Active / Verified',
-    ownerName: 'Demo Owner',
-    make: 'Hyundai',
-    model: 'Creta',
-    fuelType: 'Petrol',
-    registrationDate: '2020-04-15',
-    insuranceStatus: 'Valid',
-    fitnessStatus: 'Current',
-    verificationScore: score,
-    source: 'Sandbox mock response',
-    warnings: [
-      'This response is served from mock fallback mode because no live sandbox endpoint is configured.',
-    ],
-  };
-}
-
-function normalizeField(value: unknown, fallback: string) {
-  return typeof value === 'string' && value.trim() ? value : fallback;
-}
-
-function readPayload(data: Record<string, unknown> | undefined, keys: string[]) {
-  if (!data) return undefined;
-
-  for (const key of keys) {
-    if (key in data && data[key] !== undefined && data[key] !== null && String(data[key]).trim() !== '') {
-      return data[key];
-    }
+function getClientIp(request: Request): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim() || 'unknown';
   }
 
-  return undefined;
+  return request.headers.get('x-real-ip') || 'unknown';
 }
 
-export async function fetchVehicleRecord(input: VehicleRequest): Promise<VehicleResult> {
-  const baseUrl = process.env.VEHICLE_API_BASE_URL;
+function checkRateLimit(request: Request): { allowed: boolean; retryAfterMs?: number } {
+  const { windowMs, maxRequests } = getRateLimitConfig();
+  const key = getClientIp(request);
+  const now = Date.now();
+  const entry = rateLimitStore.get(key);
 
-  if (!baseUrl) {
-    return buildMockVehicleResult(input);
+  if (!entry || entry.resetAt <= now) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true };
+  }
+
+  if (entry.count >= maxRequests) {
+    return {
+      allowed: false,
+      retryAfterMs: Math.max(0, entry.resetAt - now),
+    };
+  }
+
+  entry.count += 1;
+  return { allowed: true };
+}
+
+function parseJsonBody(request: Request): Promise<Record<string, unknown>> {
+  return request
+    .json()
+    .then((body) => (body && typeof body === 'object' && !Array.isArray(body) ? body : {}))
+    .catch(() => {
+      throw new VehicleServiceError('Invalid JSON request body.', 400, 'RC_INVALID_JSON');
+    });
+}
+
+export async function POST(request: Request) {
+  const rateLimitResult = checkRateLimit(request);
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      {
+        error: 'Too many RC verification requests. Please try again later.',
+        code: 'RC_RATE_LIMITED',
+      },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.ceil((rateLimitResult.retryAfterMs ?? 0) / 1000)),
+          'Cache-Control': 'no-store, private',
+        },
+      }
+    );
+  }
+
+  const contentLength = Number(request.headers.get('content-length') ?? '0');
+  if (contentLength > 4096) {
+    return NextResponse.json(
+      { error: 'Request body is too large.', code: 'RC_REQUEST_TOO_LARGE' },
+      { status: 413 }
+    );
   }
 
   try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    };
+    const body = await parseJsonBody(request);
+    const rawRegistrationNumber = typeof body.registrationNumber === 'string' ? body.registrationNumber : '';
+    const registrationNumber = normalizeRegistrationNumber(rawRegistrationNumber);
 
-    const token = process.env.VEHICLE_API_KEY || process.env.VEHICLE_API_TOKEN;
-    const apiSecret = process.env.VEHICLE_API_SECRET;
-    const username = process.env.VEHICLE_API_USERNAME;
-    const password = process.env.VEHICLE_API_PASSWORD;
-
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+    if (!registrationNumber || !isValidRegistrationNumber(registrationNumber)) {
+      return NextResponse.json(
+        { error: 'A valid registration number is required.', code: 'RC_INVALID_REGISTRATION_NUMBER' },
+        { status: 400 }
+      );
     }
 
-    if (apiSecret) {
-      headers['X-API-Key'] = apiSecret;
-    }
+    const chassisNumber = typeof body.chassisNumber === 'string' ? body.chassisNumber.trim() : undefined;
+    const engineNumber = typeof body.engineNumber === 'string' ? body.engineNumber.trim() : undefined;
 
-    if (username && password) {
-      headers['X-API-Username'] = username;
-      headers['X-API-Password'] = password;
-    }
-
-    const endpoint = `${baseUrl.replace(/\/$/, '')}/rc/rc-v2`;
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        id_number: input.registrationNumber,
-        enrich: false,
-        ...(input.chassisNumber ? { chassis_number: input.chassisNumber } : {}),
-        ...(input.engineNumber ? { engine_number: input.engineNumber } : {}),
-      }),
+    const result = await fetchVehicleRecord({
+      registrationNumber,
+      ...(chassisNumber ? { chassisNumber } : {}),
+      ...(engineNumber ? { engineNumber } : {}),
     });
 
-    if (!response.ok) {
-      throw new Error(`Sandbox API responded with ${response.status}`);
+    return NextResponse.json({ result }, {
+      headers: {
+        'Cache-Control': 'no-store, private, max-age=0',
+      },
+    });
+  } catch (error) {
+    if (error instanceof VehicleServiceError) {
+      const status = error.statusCode >= 500 ? 503 : error.statusCode;
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: error.code,
+        },
+        {
+          status,
+          headers: {
+            'Cache-Control': 'no-store, private, max-age=0',
+          },
+        }
+      );
     }
 
-    const payload = (await response.json()) as Record<string, unknown>;
-    const data = (payload.data as Record<string, unknown>) || payload;
-
-    return {
-      registrationNumber: normalizeField(
-        readPayload(data, ['rc_number', 'registrationNumber', 'id_number', 'registration_number']),
-        input.registrationNumber.toUpperCase()
-      ),
-      status: normalizeField(readPayload(data, ['status', 'verification_status', 'rc_status']), 'Active / Verified'),
-      ownerName: normalizeField(
-        readPayload(data, ['owner_name', 'ownerName', 'name', 'registered_owner']),
-        'Owner not returned'
-      ),
-      make: normalizeField(readPayload(data, ['make', 'manufacturer', 'vehicle_make']), 'Vehicle'),
-      model: normalizeField(readPayload(data, ['model', 'vehicle_model']), 'Model'),
-      fuelType: normalizeField(readPayload(data, ['fuel_type', 'fuelType']), 'Unknown'),
-      registrationDate: normalizeField(
-        readPayload(data, ['registration_date', 'registrationDate', 'registered_on']),
-        'Not available'
-      ),
-      insuranceStatus: normalizeField(readPayload(data, ['insurance_status', 'insuranceStatus']), 'Unknown'),
-      fitnessStatus: normalizeField(readPayload(data, ['fitness_status', 'fitnessStatus']), 'Unknown'),
-      verificationScore: typeof readPayload(data, ['verification_score', 'verificationScore']) === 'number'
-        ? Number(readPayload(data, ['verification_score', 'verificationScore']))
-        : 92,
-      source: 'Live sandbox API',
-      warnings: Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean).map(String) : [],
-    };
-  } catch (error) {
-    console.error('Sandbox fetch failed, using mock response:', error);
-    return buildMockVehicleResult(input);
+    return NextResponse.json(
+      {
+        error: 'Unable to verify vehicle details at this time.',
+        code: 'RC_UNKNOWN_ERROR',
+      },
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, private, max-age=0',
+        },
+      }
+    );
   }
 }

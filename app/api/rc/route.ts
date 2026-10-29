@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { isAgentAllowlistConfigured, isAllowedAgentEmail, isProductionDeployment } from '@/lib/agent-access';
 import { getVehicleRateLimiters } from '@/lib/rate-limit';
 import { fetchVehicleRecord } from '@/lib/vehicle-service';
 
@@ -110,6 +111,20 @@ export async function POST(request: Request) {
 
     if (authError || !user) {
       return jsonResponse({ error: 'Authentication required.' }, 401);
+    }
+
+    if (isProductionDeployment() && !isAgentAllowlistConfigured()) {
+      return jsonResponse(
+        { error: 'Approved agent access is not configured.' },
+        503
+      );
+    }
+
+    if (!isAllowedAgentEmail(user.email)) {
+      return jsonResponse(
+        { error: 'This account is not authorized for Vahan AI.' },
+        403
+      );
     }
 
     let rawBody: string | null;

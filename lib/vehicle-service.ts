@@ -1,30 +1,79 @@
-import { NextResponse } from 'next/server';
-import { fetchVehicleRecord } from '@/lib/vehicle-service';
+type VehicleLookupInput = {
+  registrationNumber: string;
+  chassisNumber?: string;
+  engineNumber?: string;
+};
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const registrationNumber = String(body.registrationNumber || '').trim();
+type VehicleRecord = {
+  registrationNumber: string;
+  make?: string;
+  model?: string;
+  variant?: string;
+  fuelType?: string;
+  vehicleClass?: string;
+  registrationDate?: string;
+  source: string;
+};
 
-    if (!registrationNumber) {
-      return NextResponse.json(
-        { error: 'Registration number is required.' },
-        { status: 400 }
-      );
-    }
+export async function fetchVehicleRecord(
+  input: VehicleLookupInput
+): Promise<VehicleRecord> {
+  const registrationNumber = input.registrationNumber
+    .replace(/\s+/g, '')
+    .toUpperCase();
 
-    const record = await fetchVehicleRecord({
-      registrationNumber,
-      chassisNumber: body.chassisNumber,
-      engineNumber: body.engineNumber,
-    });
+  const baseUrl = process.env.VEHICLE_API_BASE_URL;
+  const apiKey = process.env.VEHICLE_API_KEY;
 
-    return NextResponse.json({ result: record });
-  } catch (error) {
-    console.error('RC route failed:', error);
-    return NextResponse.json(
-      { error: 'Unexpected server error while verifying vehicle details.' },
-      { status: 500 }
+  if (!baseUrl || !apiKey) {
+    throw new Error(
+      'Vehicle API configuration is missing. Configure server environment variables.'
     );
   }
+
+  const response = await fetch(baseUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      id_number: registrationNumber,
+    }),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Vehicle API request failed: ${response.status}`);
+  }
+
+  const payload = await response.json();
+
+  const data = payload?.data ?? payload?.result ?? payload;
+
+  if (!data || typeof data !== 'object') {
+    throw new Error('Vehicle API returned an invalid response.');
+  }
+
+  const returnedNumber = String(
+    data.registration_number ?? data.rc_number ?? data.reg_no ?? ''
+  )
+    .replace(/\s+/g, '')
+    .toUpperCase();
+
+  if (returnedNumber && returnedNumber !== registrationNumber) {
+    throw new Error('Vehicle registration number does not match.');
+  }
+
+  return {
+    registrationNumber: returnedNumber || registrationNumber,
+    make: data.make ?? data.maker_description ?? data.manufacturer,
+    model: data.model ?? data.model_name,
+    variant: data.variant ?? data.variant_name,
+    fuelType: data.fuel_type ?? data.fuel,
+    vehicleClass: data.vehicle_class ?? data.class,
+    registrationDate:
+      data.registration_date ?? data.registered_at ?? data.reg_date,
+    source: 'vehicle_api',
+  };
 }

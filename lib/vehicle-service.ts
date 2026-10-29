@@ -1,3 +1,5 @@
+import 'server-only';
+
 export type VehicleLookupInput = {
   registrationNumber: string;
   chassisNumber?: string;

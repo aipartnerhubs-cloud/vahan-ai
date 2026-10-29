@@ -253,3 +253,71 @@ test('handles optional fields missing without crashing', async () => {
     if (previousToken) process.env.VEHICLE_API_TOKEN = previousToken;
   }
 });
+
+test('fails closed in production when the provider URL is not explicitly configured', async () => {
+  const previous = {
+    nodeEnv: process.env.NODE_ENV,
+    baseUrl: process.env.VEHICLE_API_BASE_URL,
+    key: process.env.VEHICLE_API_KEY,
+    token: process.env.VEHICLE_API_TOKEN,
+    appMode: process.env.APP_MODE,
+  };
+
+  process.env.NODE_ENV = 'production';
+  delete process.env.VEHICLE_API_BASE_URL;
+  process.env.VEHICLE_API_KEY = 'test-token';
+  delete process.env.VEHICLE_API_TOKEN;
+  process.env.APP_MODE = 'production';
+
+  try {
+    await assert.rejects(
+      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+      /credentials are not configured/i
+    );
+  } finally {
+    if (previous.nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous.nodeEnv;
+    if (previous.baseUrl === undefined) delete process.env.VEHICLE_API_BASE_URL;
+    else process.env.VEHICLE_API_BASE_URL = previous.baseUrl;
+    if (previous.key === undefined) delete process.env.VEHICLE_API_KEY;
+    else process.env.VEHICLE_API_KEY = previous.key;
+    if (previous.token === undefined) delete process.env.VEHICLE_API_TOKEN;
+    else process.env.VEHICLE_API_TOKEN = previous.token;
+    if (previous.appMode === undefined) delete process.env.APP_MODE;
+    else process.env.APP_MODE = previous.appMode;
+  }
+});
+
+test('rejects a sandbox host in production mode', async () => {
+  const previous = {
+    nodeEnv: process.env.NODE_ENV,
+    baseUrl: process.env.VEHICLE_API_BASE_URL,
+    key: process.env.VEHICLE_API_KEY,
+    token: process.env.VEHICLE_API_TOKEN,
+    appMode: process.env.APP_MODE,
+  };
+
+  process.env.NODE_ENV = 'production';
+  process.env.VEHICLE_API_BASE_URL = 'https://sandbox.surepass.app/api/v1';
+  process.env.VEHICLE_API_KEY = 'test-token';
+  delete process.env.VEHICLE_API_TOKEN;
+  process.env.APP_MODE = 'production';
+
+  try {
+    await assert.rejects(
+      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+      /sandbox/i
+    );
+  } finally {
+    if (previous.nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous.nodeEnv;
+    if (previous.baseUrl === undefined) delete process.env.VEHICLE_API_BASE_URL;
+    else process.env.VEHICLE_API_BASE_URL = previous.baseUrl;
+    if (previous.key === undefined) delete process.env.VEHICLE_API_KEY;
+    else process.env.VEHICLE_API_KEY = previous.key;
+    if (previous.token === undefined) delete process.env.VEHICLE_API_TOKEN;
+    else process.env.VEHICLE_API_TOKEN = previous.token;
+    if (previous.appMode === undefined) delete process.env.APP_MODE;
+    else process.env.APP_MODE = previous.appMode;
+  }
+});

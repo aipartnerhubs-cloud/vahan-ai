@@ -104,7 +104,7 @@ export default function LoginPage() {
         </form>
 
         <p style={{ color: '#667085', fontSize: 13, lineHeight: 1.6, marginTop: 20 }}>
-          Accounts are created by an administrator. Public self-registration is not available in this application.
+          Accounts are created by an administrator. Production access is restricted to email addresses approved in the server-side ALLOWED_AGENT_EMAILS setting; public self-registration is not available in this application.
         </p>
       </section>
     </main>

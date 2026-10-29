@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr';
+import { isAgentAllowlistConfigured, isAllowedAgentEmail, isProductionDeployment } from '@/lib/agent-access';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -36,7 +37,10 @@ export async function middleware(request: NextRequest) {
   const isLoginPage = pathname === '/login';
   const isApi = isApiPath(pathname);
 
-  if (!isConfigured()) {
+  if (
+    !isConfigured() ||
+    (isProductionDeployment() && !isAgentAllowlistConfigured())
+  ) {
     if (isApi) {
       return withSecurityHeaders(
         NextResponse.json(
@@ -82,14 +86,32 @@ export async function middleware(request: NextRequest) {
     error,
   } = await supabase.auth.getUser();
 
-  if (isLoginPage && user && !error) {
+  const authorizedAgent = Boolean(user && !error && isAllowedAgentEmail(user.email));
+
+  if (isLoginPage && authorizedAgent) {
     const homeUrl = request.nextUrl.clone();
     homeUrl.pathname = '/';
     homeUrl.search = '';
     return withSecurityHeaders(NextResponse.redirect(homeUrl), request);
   }
 
-  if (!isLoginPage && (!user || error)) {
+  if (user && !error && !authorizedAgent) {
+    if (isApi) {
+      return withSecurityHeaders(
+        NextResponse.json({ error: 'This account is not authorized for Vahan AI.' }, { status: 403 }),
+        request
+      );
+    }
+
+    if (!isLoginPage) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = '/login';
+      loginUrl.search = '?access=denied';
+      return withSecurityHeaders(NextResponse.redirect(loginUrl), request);
+    }
+  }
+
+  if (!isLoginPage && (!authorizedAgent || error)) {
     if (isApi) {
       return withSecurityHeaders(
         NextResponse.json({ error: 'Authentication required.' }, { status: 401 }),

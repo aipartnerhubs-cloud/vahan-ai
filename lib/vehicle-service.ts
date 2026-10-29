@@ -109,7 +109,23 @@ function getResponseData(payload: unknown): Record<string, unknown> | undefined 
     return result;
   }
 
-  return payload;
+  // Accept provider fields returned at the root only when the payload looks
+  // like an RC record. Do not turn arbitrary success envelopes into blank records.
+  const knownRcFields = [
+    'rc_number',
+    'registration_number',
+    'registrationNumber',
+    'id_number',
+    'owner_name',
+    'maker_description',
+    'manufacturer',
+    'make',
+    'model',
+    'fuel_type',
+    'registration_date',
+  ];
+
+  return knownRcFields.some((key) => key in payload) ? payload : undefined;
 }
 
 function getWarnings(payload: unknown): string[] | undefined {

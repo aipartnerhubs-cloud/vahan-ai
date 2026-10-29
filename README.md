@@ -7,7 +7,7 @@ Vahan AI is a Next.js App Router application that retrieves vehicle RC data from
 1. An approved agent signs in on `/login` with Supabase Auth email/password.
 2. `middleware.ts` validates the Supabase session and refreshes auth cookies. Unauthenticated page requests are redirected to `/login`; unauthenticated API requests are rejected.
 3. `POST /api/rc` independently checks the session, same-origin browser requests, request size, and input schema.
-4. A durable Upstash Redis rate limiter enforces per-user lookup quotas before contacting Surepass.
+4. A production email allowlist blocks unapproved accounts; a durable Upstash Redis rate limiter enforces per-user lookup quotas before contacting Surepass.
 5. `lib/vehicle-service.ts` calls Surepass with a server-side Bearer credential and normalizes the response.
 6. RC responses are marked no-store. Logs intentionally omit credentials, upstream bodies, and owner data.
 
@@ -22,6 +22,7 @@ Configure these in the hosting provider's environment settings. Do not commit re
 | `VEHICLE_API_BASE_URL` | Official Surepass API base URL for the selected environment |
 | `VEHICLE_API_KEY` | Surepass bearer credential; remains server-side only |
 | `APP_MODE` | `sandbox` for development or `production` for a live deployment |
+| `ALLOWED_AGENT_EMAILS` | Comma-separated server-side allowlist of agent email addresses; required in production |
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis REST endpoint for durable rate limiting |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST token; server-side only |
 
@@ -64,7 +65,7 @@ GitHub Actions runs the same checks on pushes and pull requests. A CI pass valid
 ## Deployment checklist
 
 - [ ] Set Supabase URL and public key in production environment settings.
-- [ ] Disable public Supabase sign-ups and provision agent accounts.
+- [ ] Disable public Supabase sign-ups, provision agent accounts, and configure `ALLOWED_AGENT_EMAILS` with the approved agent emails.
 - [ ] Set the official live Surepass base URL, server-side bearer credential, and `APP_MODE=production`.
 - [ ] Configure Upstash Redis URL/token.
 - [ ] Confirm all environment variables are assigned to the correct Vercel environment (Production, not only Preview).

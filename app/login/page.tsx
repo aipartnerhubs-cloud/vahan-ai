@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
@@ -15,7 +15,17 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('setup') === 'missing') {
+      setNotice('Production setup is incomplete. An administrator must configure Supabase and the approved-agent email allowlist in the hosting environment.');
+    } else if (params.get('access') === 'denied') {
+      setNotice('This email is not approved for Vahan AI access. Contact your administrator or sign in with an approved agent account.');
+    }
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,6 +70,12 @@ export default function LoginPage() {
         <p style={{ color: '#475467', lineHeight: 1.6 }}>
           Sign in with an account provisioned by your administrator to access vehicle verification.
         </p>
+
+        {notice ? (
+          <div className="alert error" role="alert" style={{ margin: '20px 0' }}>
+            {notice}
+          </div>
+        ) : null}
 
         {!supabaseConfigured ? (
           <div className="alert error" role="alert" style={{ margin: '20px 0' }}>

@@ -25,7 +25,7 @@ Configure these in the hosting provider's environment settings. Do not commit re
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis REST endpoint for durable rate limiting |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST token; server-side only |
 
-The template in `.env.example` illustrates the expected names. Do not copy placeholder values into production. In a production build, the app rejects a missing provider URL, a non-HTTPS URL, a sandbox hostname, or an `APP_MODE` other than `production`. The exact live Surepass base URL must come from your approved Surepass account documentation; this repository does not guess it.
+The template in `.env.example` illustrates the expected names. Do not copy placeholder values into production. In a production deployment/runtime, the app rejects a missing provider URL, a non-HTTPS URL, a sandbox hostname, or an `APP_MODE` other than `production`. Vercel Preview can use `APP_MODE=sandbox` with an explicitly configured sandbox URL. The exact live Surepass base URL must come from your approved Surepass account documentation; this repository does not guess it.
 
 ## Supabase Auth setup
 

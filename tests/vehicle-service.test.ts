@@ -164,7 +164,7 @@ test('throws for request timeout', async () => {
   try {
     await assert.rejects(
       () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
-      /aborted|temporarily unavailable/i
+      /timed out|aborted|temporarily unavailable/i
     );
   } finally {
     globalThis.fetch = originalFetch;

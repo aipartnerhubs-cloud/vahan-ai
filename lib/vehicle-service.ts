@@ -1,3 +1,4 @@
+```typescript
 type VehicleLookupInput = {
   registrationNumber: string;
   chassisNumber?: string;
@@ -12,6 +13,8 @@ type VehicleRecord = {
   fuelType?: string;
   vehicleClass?: string;
   registrationDate?: string;
+  fitnessValidUntil?: string;
+  ownerName?: string;
   source: string;
 };
 
@@ -22,13 +25,14 @@ export async function fetchVehicleRecord(
     .replace(/\s+/g, '')
     .toUpperCase();
 
-  const baseUrl = process.env.VEHICLE_API_BASE_URL;
   const apiKey = process.env.VEHICLE_API_KEY;
 
-  if (!baseUrl || !apiKey) {
-    throw new Error(
-      'Vehicle API configuration is missing. Configure server environment variables.'
-    );
+  const baseUrl =
+    process.env.VEHICLE_API_BASE_URL ||
+    'https://sandbox.surepass.app/api/v1/rc/rc-v2';
+
+  if (!apiKey) {
+    throw new Error('Surepass API token is not configured.');
   }
 
   const response = await fetch(baseUrl, {
@@ -39,41 +43,46 @@ export async function fetchVehicleRecord(
     },
     body: JSON.stringify({
       id_number: registrationNumber,
+      enrich: false,
     }),
     cache: 'no-store',
   });
 
-  if (!response.ok) {
-    throw new Error(`Vehicle API request failed: ${response.status}`);
-  }
-
   const payload = await response.json();
 
-  const data = payload?.data ?? payload?.result ?? payload;
+  if (!response.ok) {
+    console.error('Surepass RC API error:', response.status);
+    throw new Error(`Surepass RC lookup failed (${response.status}).`);
+  }
+
+  const data = payload?.data;
 
   if (!data || typeof data !== 'object') {
-    throw new Error('Vehicle API returned an invalid response.');
+    throw new Error('Surepass returned an invalid RC response.');
   }
 
   const returnedNumber = String(
-    data.registration_number ?? data.rc_number ?? data.reg_no ?? ''
+    data.rc_number ?? data.registration_number ?? ''
   )
     .replace(/\s+/g, '')
     .toUpperCase();
 
   if (returnedNumber && returnedNumber !== registrationNumber) {
-    throw new Error('Vehicle registration number does not match.');
+    throw new Error('Returned vehicle registration number does not match.');
   }
 
   return {
     registrationNumber: returnedNumber || registrationNumber,
-    make: data.make ?? data.maker_description ?? data.manufacturer,
-    model: data.model ?? data.model_name,
-    variant: data.variant ?? data.variant_name,
-    fuelType: data.fuel_type ?? data.fuel,
-    vehicleClass: data.vehicle_class ?? data.class,
-    registrationDate:
-      data.registration_date ?? data.registered_at ?? data.reg_date,
-    source: 'vehicle_api',
+    make: data.maker_description ?? data.make ?? undefined,
+    model: data.model ?? data.model_name ?? undefined,
+    variant: data.variant ?? data.variant_name ?? undefined,
+    fuelType: data.fuel_type ?? undefined,
+    vehicleClass:
+      data.vehicle_category ?? data.vehicle_class ?? undefined,
+    registrationDate: data.registration_date ?? undefined,
+    fitnessValidUntil: data.fit_up_to ?? undefined,
+    ownerName: data.owner_name ?? undefined,
+    source: 'surepass_rc_v2',
   };
 }
+```

@@ -132,14 +132,42 @@ export async function fetchVehicleRecord(
     throw new Error('Invalid registration number.');
   }
 
-  const baseUrl = process.env.VEHICLE_API_BASE_URL || DEFAULT_BASE_URL;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const configuredBaseUrl = process.env.VEHICLE_API_BASE_URL?.trim();
+  const baseUrl = configuredBaseUrl || (isProduction ? '' : DEFAULT_BASE_URL);
   const apiKey = process.env.VEHICLE_API_KEY || process.env.VEHICLE_API_TOKEN;
+  const appMode = (process.env.APP_MODE || '').trim().toLowerCase();
 
   if (!baseUrl || !apiKey) {
     throw new Error('Surepass API credentials are not configured.');
   }
 
-  const endpoint = `${baseUrl.replace(/\/+$/, '')}/rc/rc-v2`;
+  let parsedBaseUrl: URL;
+  try {
+    parsedBaseUrl = new URL(baseUrl);
+  } catch {
+    throw new Error('Surepass API base URL is not configured correctly.');
+  }
+
+  if (
+    parsedBaseUrl.protocol !== 'https:' ||
+    parsedBaseUrl.username ||
+    parsedBaseUrl.password ||
+    parsedBaseUrl.search ||
+    parsedBaseUrl.hash
+  ) {
+    throw new Error('Surepass API base URL must be a clean HTTPS URL.');
+  }
+
+  if (isProduction && appMode !== 'production') {
+    throw new Error('Production provider mode is not configured.');
+  }
+
+  if (isProduction && /sandbox/i.test(parsedBaseUrl.hostname)) {
+    throw new Error('Production API URL must not point to sandbox.');
+  }
+
+  const endpoint = `${parsedBaseUrl.toString().replace(/\/+$/, '')}/rc/rc-v2`;
 
   let response: Response;
   try {

@@ -1,11 +1,13 @@
 "use client";
 
 import { FormEvent, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const defaultForm = {
-  registrationNumber: 'MH12AB1234',
-  chassisNumber: 'ABCD1234567890',
-  engineNumber: 'XYZ987654321',
+  registrationNumber: '',
+  chassisNumber: '',
+  engineNumber: '',
 };
 
 type VehicleResult = {
@@ -24,10 +26,22 @@ type VehicleResult = {
 };
 
 export default function HomePage() {
+  const router = useRouter();
   const [form, setForm] = useState(defaultForm);
   const [result, setResult] = useState<VehicleResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  async function handleSignOut() {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      router.replace('/login');
+      router.refresh();
+    } catch {
+      setError('Unable to sign out. Please reload the page and try again.');
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -58,6 +72,23 @@ export default function HomePage() {
 
   return (
     <main className="page-shell">
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          style={{
+            border: '1px solid #d0d5dd',
+            borderRadius: 10,
+            padding: '10px 16px',
+            background: '#ffffff',
+            color: '#344054',
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          Sign out
+        </button>
+      </div>
       <div className="hero-card">
         <div className="hero-copy">
           <span className="eyebrow">RC-first vehicle verification</span>

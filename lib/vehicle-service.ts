@@ -135,13 +135,13 @@ export async function fetchVehicleRecord(
   }
 
   const isProductionRuntime = process.env.NODE_ENV === 'production';
-  const configuredBaseUrl = process.env.VEHICLE_API_BASE_URL?.trim();
-  const baseUrl = configuredBaseUrl || (isProductionRuntime ? '' : DEFAULT_BASE_URL);
-  const apiKey = process.env.VEHICLE_API_KEY || process.env.VEHICLE_API_TOKEN;
-  const appMode = (process.env.APP_MODE || '').trim().toLowerCase();
   const isProductionDeployment =
     process.env.VERCEL_ENV === 'production' ||
     (!process.env.VERCEL_ENV && isProductionRuntime);
+  const configuredBaseUrl = process.env.VEHICLE_API_BASE_URL?.trim();
+  const baseUrl = configuredBaseUrl || (isProductionDeployment ? '' : DEFAULT_BASE_URL);
+  const apiKey = process.env.VEHICLE_API_KEY || process.env.VEHICLE_API_TOKEN;
+  const appMode = (process.env.APP_MODE || '').trim().toLowerCase();
 
   if (!baseUrl || !apiKey) {
     throw new Error('Surepass API credentials are not configured.');

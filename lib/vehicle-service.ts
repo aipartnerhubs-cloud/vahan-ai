@@ -29,6 +29,10 @@ function normalizeRegistrationNumber(value: string): string {
   return value.replace(/\s+/g, '').toUpperCase();
 }
 
+function isValidRegistrationNumber(value: string): boolean {
+  return /^[A-Z0-9]+$/.test(value);
+}
+
 function readField(
   record: Record<string, unknown> | undefined,
   keys: string[]
@@ -57,7 +61,6 @@ function readField(
 function asString(value: unknown, fallback: string): string {
   if (typeof value === 'string') {
     const trimmed = value.trim();
-
     if (trimmed) {
       return trimmed;
     }
@@ -77,7 +80,6 @@ function asNumber(value: unknown, fallback: number): number {
 
   if (typeof value === 'string') {
     const parsed = Number(value);
-
     if (Number.isFinite(parsed)) {
       return parsed;
     }
@@ -91,16 +93,18 @@ function getResponseData(payload: unknown): Record<string, unknown> | undefined 
     return undefined;
   }
 
-  if (Array.isArray(payload.data) && payload.data.length > 0 && isRecord(payload.data[0])) {
-    return payload.data[0];
+  const { data, result } = payload;
+
+  if (Array.isArray(data) && data.length > 0 && isRecord(data[0])) {
+    return data[0];
   }
 
-  if (isRecord(payload.data)) {
-    return payload.data;
+  if (isRecord(data)) {
+    return data;
   }
 
-  if (isRecord(payload.result)) {
-    return payload.result as Record<string, unknown>;
+  if (isRecord(result)) {
+    return result;
   }
 
   return payload;
@@ -119,16 +123,10 @@ function getWarnings(payload: unknown): string[] | undefined {
   return warnings.length > 0 ? warnings : undefined;
 }
 
-function isValidRegistrationNumber(value: string): boolean {
-  return /^[A-Z0-9]+$/i.test(value);
-}
-
 export async function fetchVehicleRecord(
   input: VehicleLookupInput
 ): Promise<VehicleResult> {
-  const registrationNumber = normalizeRegistrationNumber(
-    input.registrationNumber || ''
-  );
+  const registrationNumber = normalizeRegistrationNumber(input.registrationNumber || '');
 
   if (!registrationNumber || !isValidRegistrationNumber(registrationNumber)) {
     throw new Error('Invalid registration number.');
@@ -143,26 +141,35 @@ export async function fetchVehicleRecord(
 
   const endpoint = `${baseUrl.replace(/\/+$/, '')}/rc/rc-v2`;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      id_number: registrationNumber,
-      enrich: false,
-      ...(input.chassisNumber?.trim()
-        ? { chassis_number: input.chassisNumber.trim() }
-        : {}),
-      ...(input.engineNumber?.trim()
-        ? { engine_number: input.engineNumber.trim() }
-        : {}),
-    }),
-    cache: 'no-store',
-    signal: AbortSignal.timeout(15000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        id_number: registrationNumber,
+        enrich: false,
+        ...(input.chassisNumber?.trim()
+          ? { chassis_number: input.chassisNumber.trim() }
+          : {}),
+        ...(input.engineNumber?.trim()
+          ? { engine_number: input.engineNumber.trim() }
+          : {}),
+      }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Request failed';
+    if (message.toLowerCase().includes('abort')) {
+      throw new Error('Vehicle verification request timed out.');
+    }
+    throw new Error('Vehicle verification service is temporarily unavailable.');
+  }
 
   if (!response.ok) {
     const rawText = await response.text().catch(() => '');
@@ -181,19 +188,17 @@ export async function fetchVehicleRecord(
     throw new Error('Surepass returned an unexpected response structure.');
   }
 
-  const returnedReg = normalizeRegistrationNumber(
+  const returnedRegistrationNumber = normalizeRegistrationNumber(
     asString(
-      readField(data, [
-        'rc_number',
-        'registration_number',
-        'registrationNumber',
-        'id_number',
-      ]),
+      readField(data, ['rc_number', 'registration_number', 'registrationNumber', 'id_number']),
       registrationNumber
     )
   );
 
-  if (returnedReg && returnedReg !== registrationNumber) {
+  if (
+    returnedRegistrationNumber &&
+    returnedRegistrationNumber !== registrationNumber
+  ) {
     throw new Error('Returned vehicle registration number does not match.');
   }
 
@@ -203,7 +208,7 @@ export async function fetchVehicleRecord(
   );
 
   return {
-    registrationNumber: returnedReg || registrationNumber,
+    registrationNumber: returnedRegistrationNumber || registrationNumber,
     status: asString(
       readField(data, ['status', 'verification_status', 'rc_status', 'vehicle_status']),
       'Verification complete'
@@ -233,13 +238,7 @@ export async function fetchVehicleRecord(
       'Not available'
     ),
     fitnessStatus: asString(
-      readField(data, [
-        'fitness_status',
-        'fitnessStatus',
-        'fitness_validity',
-        'fit_up_to',
-        'fitnessValidUntil',
-      ]),
+      readField(data, ['fitness_status', 'fitnessStatus', 'fitness_validity', 'fit_up_to']),
       'Not available'
     ),
     verificationScore: Number.isFinite(verificationScore)

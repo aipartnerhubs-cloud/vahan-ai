@@ -1,61 +1,165 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getVehicleRateLimiters } from '@/lib/rate-limit';
 import { fetchVehicleRecord } from '@/lib/vehicle-service';
 
-const INVALID_REGISTRATION_MESSAGE = 'Registration number is required.';
+const MAX_BODY_BYTES = 8 * 1024;
+const requestSchema = z
+  .object({
+    registrationNumber: z
+      .string()
+      .trim()
+      .min(1, 'Registration number is required.')
+      .max(20, 'Registration number is too long.')
+      .regex(/^[A-Za-z0-9]+$/, 'Registration number format is invalid.'),
+    chassisNumber: z.string().trim().max(64).optional(),
+    engineNumber: z.string().trim().max(64).optional(),
+  })
+  .strict();
+
+function jsonResponse(
+  payload: Record<string, unknown>,
+  status = 200,
+  extraHeaders: Record<string, string> = {}
+) {
+  return NextResponse.json(payload, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store, max-age=0',
+      Pragma: 'no-cache',
+      'X-Content-Type-Options': 'nosniff',
+      ...extraHeaders,
+    },
+  });
+}
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as Record<string, unknown>;
-    const registrationNumber =
-      typeof body?.registrationNumber === 'string'
-        ? body.registrationNumber.trim()
-        : '';
+    const origin = request.headers.get('origin');
+    if (origin) {
+      let originUrl: URL;
+      try {
+        originUrl = new URL(origin);
+      } catch {
+        return jsonResponse({ error: 'Invalid request origin.' }, 403);
+      }
 
-    if (!registrationNumber) {
-      return NextResponse.json(
-        { error: INVALID_REGISTRATION_MESSAGE },
-        { status: 400 }
+      if (originUrl.origin !== new URL(request.url).origin) {
+        return jsonResponse({ error: 'Cross-origin requests are not allowed.' }, 403);
+      }
+    }
+
+    const contentLength = Number(request.headers.get('content-length') || 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+      return jsonResponse({ error: 'Request body is too large.' }, 413);
+    }
+
+    const supabase = await createSupabaseServerClient();
+    if (!supabase) {
+      return jsonResponse(
+        { error: 'Application authentication is not configured.' },
+        503
       );
     }
 
-    const result = await fetchVehicleRecord({
-      registrationNumber,
-      chassisNumber:
-        typeof body?.chassisNumber === 'string'
-          ? body.chassisNumber.trim()
-          : undefined,
-      engineNumber:
-        typeof body?.engineNumber === 'string'
-          ? body.engineNumber.trim()
-          : undefined,
-    });
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-    return NextResponse.json({ result });
+    if (authError || !user) {
+      return jsonResponse({ error: 'Authentication required.' }, 401);
+    }
+
+    let rawBody: string;
+    try {
+      rawBody = await request.text();
+    } catch {
+      return jsonResponse({ error: 'Invalid request body.' }, 400);
+    }
+
+    if (rawBody.length > MAX_BODY_BYTES) {
+      return jsonResponse({ error: 'Request body is too large.' }, 413);
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return jsonResponse({ error: 'Request body must be valid JSON.' }, 400);
+    }
+
+    const parsed = requestSchema.safeParse(body);
+    if (!parsed.success) {
+      const registrationIssue = parsed.error.issues.find(
+        (issue) => issue.path[0] === 'registrationNumber'
+      );
+      return jsonResponse(
+        { error: registrationIssue?.message || 'Invalid request fields.' },
+        400
+      );
+    }
+
+    const rateLimiters = getVehicleRateLimiters();
+    if (!rateLimiters && process.env.NODE_ENV === 'production') {
+      return jsonResponse(
+        { error: 'RC verification security controls are not configured.' },
+        503
+      );
+    }
+
+    if (rateLimiters) {
+      let shortTerm;
+      let daily;
+
+      try {
+        [shortTerm, daily] = await Promise.all([
+          rateLimiters.shortTerm.limit(user.id),
+          rateLimiters.daily.limit(user.id),
+        ]);
+      } catch {
+        // Fail closed: do not call a paid/sensitive upstream API when rate limiting is unavailable.
+        console.error('RC rate-limit service unavailable.');
+        return jsonResponse(
+          { error: 'Vehicle verification is temporarily unavailable.' },
+          503
+        );
+      }
+
+      if (!shortTerm.success || !daily.success) {
+        const resetAt = !shortTerm.success ? shortTerm.reset : daily.reset;
+        const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+        return jsonResponse(
+          { error: 'Lookup limit reached. Please try again later.' },
+          429,
+          { 'Retry-After': String(retryAfter) }
+        );
+      }
+    }
+
+    const result = await fetchVehicleRecord(parsed.data);
+    return jsonResponse({ result });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Vehicle verification failed.';
+    const message = error instanceof Error ? error.message : '';
 
     if (/Invalid registration number/i.test(message)) {
-      return NextResponse.json(
-        { error: 'Registration number is invalid.' },
-        { status: 400 }
+      return jsonResponse({ error: 'Registration number format is invalid.' }, 400);
+    }
+
+    if (/not configured|credentials|production mode|sandbox/i.test(message)) {
+      return jsonResponse(
+        { error: 'Vehicle verification is not configured for this environment.' },
+        503
       );
     }
 
-    if (/not configured|credentials/i.test(message)) {
-      return NextResponse.json(
-        { error: 'Vehicle verification is temporarily unavailable.' },
-        { status: 503 }
-      );
-    }
-
-    console.error('RC route failed:', message);
-
-    return NextResponse.json(
-      {
-        error: 'Vehicle verification is temporarily unavailable. Please try again.',
-      },
-      { status: 502 }
+    // Avoid logging upstream payloads, tokens, or owner details.
+    console.error('RC route failed; provider details were intentionally omitted.');
+    return jsonResponse(
+      { error: 'Vehicle verification is temporarily unavailable. Please try again.' },
+      502
     );
   }
 }

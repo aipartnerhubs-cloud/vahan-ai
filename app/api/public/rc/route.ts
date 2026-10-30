@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { getPublicRateLimiters } from '@/lib/rate-limit';
 import { fetchVehicleRecord } from '@/lib/vehicle-service';
 import { toPublicVehicleResult } from '@/lib/public-vehicle';
-import { getIndiaCalendarDate, millisecondsUntilNextIndiaMidnight, PUBLIC_PARTNER_DAILY_LIMIT } from '@/lib/public-usage-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,9 +17,9 @@ const requestSchema = z.object({
     .max(25, 'Registration number is too long.')
     .regex(/^[A-Za-z0-9\s-]+$/, 'Registration number format is invalid.'),
   authorizedPurpose: z.literal(true, {
-    errorMap: () => ({ message: 'Please confirm that you are authorized to request this lookup.' }),
-  }),
-}).strict();
+    errorMap: () => ({ message: 'Please confirm that you are authorized to request this lookup.' })
+    })
+    }).strict();
 
 function respond(payload: Record<string, unknown>, status = 200, headers: Record<string, string> = {}) {
   return NextResponse.json(payload, {
@@ -29,9 +28,9 @@ function respond(payload: Record<string, unknown>, status = 200, headers: Record
       'Cache-Control': 'no-store, max-age=0',
       Pragma: 'no-cache',
       'X-Content-Type-Options': 'nosniff',
-      ...headers,
-    },
-  });
+      ...headers
+    }
+    });
 }
 
 function getTrustedClientIp(headers: Headers): string | null {
@@ -120,13 +119,10 @@ export async function POST(request: Request) {
   }
 
   const clientKey = createHash('sha256').update(ip).digest('hex');
-  const indiaDateKey = getIndiaCalendarDate();
-  let dailyRemaining = 0;
-  const dailyResetAt = new Date(Date.now() + millisecondsUntilNextIndiaMidnight()).toISOString();
 
   try {
-    // No-login partner access is capped per public IP/network. The date suffix
-    // creates a fresh quota at India midnight without requiring a partner account.
+    // Preview testing keeps a short-window burst guard but disables the
+    // five-lookups-per-day quota.
     const burst = await limiters.burst.limit(clientKey);
     if (!burst.success) {
       const retryAfter = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
@@ -136,54 +132,37 @@ export async function POST(request: Request) {
         { 'Retry-After': String(retryAfter) }
       );
     }
-
-    const daily = await limiters.daily.limit(`${clientKey}:${indiaDateKey}`);
-    if (!daily.success) {
-      const retryAfter = Math.max(1, Math.ceil(millisecondsUntilNextIndiaMidnight() / 1000));
-      return respond(
-        {
-          error: 'Free daily limit reached: maximum 5 vehicle checks per network per India calendar day. Try again after midnight IST.',
-          code: 'DAILY_LIMIT_REACHED',
-          limitType: 'daily',
-          usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining: 0, dailyResetAt },
-        },
-        429,
-        { 'Retry-After': String(retryAfter) }
-      );
-    }
-
-    dailyRemaining = daily.remaining;
   } catch {
-    console.error('Public RC rate-limit provider unavailable.');
+    console.error('Public RC burst-limit provider unavailable.');
     return respond({ error: 'Vehicle lookup is temporarily unavailable because usage protection could not be verified.' }, 503);
   }
 
   try {
     const result = await fetchVehicleRecord({
-      registrationNumber: parsed.data.registrationNumber,
+      registrationNumber: parsed.data.registrationNumber
     });
     // Public partner response is explicitly allowlisted. Owner name and all
     // other personal/identity fields remain server-side and are never sent.
     return respond({
       result: toPublicVehicleResult(result),
-      usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt },
+      
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     if (/invalid registration number/i.test(message)) {
-      return respond({ error: 'Registration number format is invalid.', usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt } }, 400);
+      return respond({ error: 'Registration number format is invalid.',  }, 400);
     }
     if (/surepass verification failed/i.test(message)) {
       return respond({
         error: 'Surepass could not verify this registration number in Sandbox. No vehicle details were returned. Confirm a supported test registration number and Sandbox access with Surepass.',
         code: 'SUREPASS_VERIFICATION_FAILED',
-        usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt },
-      }, 422);
+        
+    }, 422);
     }
     if (/not configured|credentials|production mode|sandbox|provider url/i.test(message)) {
-      return respond({ error: 'Vehicle verification is not configured for this environment.', usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt } }, 503);
+      return respond({ error: 'Vehicle verification is not configured for this environment.',  }, 503);
     }
     console.error('Public RC lookup failed; provider details and personal data were omitted.');
-    return respond({ error: 'Vehicle verification is temporarily unavailable. Please try again.', usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt } }, 502);
+    return respond({ error: 'Vehicle verification is temporarily unavailable. Please try again.',  }, 502);
   }
 }

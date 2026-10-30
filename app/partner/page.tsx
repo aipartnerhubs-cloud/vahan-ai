@@ -152,8 +152,14 @@ export default function PartnerPage() {
   }
 
   function handleWhatsAppShare() {
-    const partnerUrl = window.location.origin + '/partner';
-    const message = t.shareText + ' ' + partnerUrl;
+    const currentUrl = new URL(window.location.href);
+    const partnerUrl = new URL('/partner', currentUrl.origin);
+    // Preserve a Vercel Preview share-link bypass token if this page was
+    // opened through a deployment-specific Shareable Link.
+    currentUrl.searchParams.forEach((value, key) => {
+      if (key.startsWith('x-vercel-')) partnerUrl.searchParams.set(key, value);
+    });
+    const message = t.shareText + ' ' + partnerUrl.toString();
     const whatsappUrl = 'https://wa.me/?text=' + encodeURIComponent(message);
     window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
   }

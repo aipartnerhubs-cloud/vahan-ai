@@ -157,3 +157,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+
+/* Public partner access tools and authorization confirmation */
+.partner-tools { display:flex; align-items:center; justify-content:flex-end; gap:8px; }
+.button-share { color:#14532d; background:#dcfce7; border:1px solid #bbf7d0; padding:10px 12px; font-size:11px; }
+.button-share:hover { background:#c9f5d9; }
+.button-install { color:#24415e; background:#fff; border:1px solid var(--line); padding:10px 12px; font-size:11px; }
+.button-install:hover { background:#f7fafc; }
+.consent-row { display:flex; align-items:flex-start; gap:10px; padding:12px; background:#f8fbfd; border:1px solid #e2eaf0; border-radius:10px; color:#53677c; font-size:11px; line-height:1.55; cursor:pointer; }
+.lookup-form input[type="checkbox"].consent-checkbox { flex:0 0 18px; width:18px; height:18px; margin:1px 0 0; padding:0; accent-color:var(--teal-dark); box-shadow:none; }
+.partner-workspace .panel-footnote { margin-top:12px; }
+@media (max-width:700px) { .partner-tools { gap:5px; } .button-share,.button-install { padding:8px 9px; font-size:10px; } }
+@media (max-width:430px) { .partner-tools { flex-wrap:wrap; max-width:74%; } .partner-tools .language-picker select { max-width:83px; } .partner-tools .button { padding:7px 8px; font-size:9px; border-radius:9px; } }

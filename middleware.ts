@@ -23,7 +23,15 @@ function withSecurityHeaders(response: NextResponse, request: NextRequest) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname === '/api' || pathname.startsWith('/api/');
+  const isPublicPartnerPage = pathname === '/partner';
+  const isPublicPartnerApi = pathname === '/api/public/rc';
   const isLogin = pathname === '/login';
+
+  // Partner lookup is intentionally public; the API has its own strict
+  // consent, IP rate-limit, payload and provider-response controls.
+  if (isPublicPartnerPage || isPublicPartnerApi) {
+    return withSecurityHeaders(NextResponse.next(), request);
+  }
   const isPublicAuthRoute =
     isLogin || pathname === '/forgot-password' || pathname === '/auth/callback';
 

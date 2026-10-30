@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
@@ -217,10 +218,10 @@ export default function HomePage() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Vahan AI home">
+        <Link className="brand" href="/" aria-label="Vahan AI home">
           <span className="brand-mark">V</span>
           <span>Vahan <strong>AI</strong></span>
-        </a>
+        </Link>
         <div className="topbar-actions">
           <label className="language-picker">
             <span>{t.language}</span>

@@ -3,253 +3,271 @@ import assert from 'node:assert/strict';
 
 import { fetchVehicleRecord } from '../lib/vehicle-service.ts';
 
-test('throws when registration number is missing', async () => {
+async function withEnvironment(
+  values: Record<string, string | undefined>,
+  run: () => void | Promise<void>
+) {
+  const keys = Object.keys(values);
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    await run();
+  } finally {
+    for (const key of keys) {
+      const value = previous[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+const devEnv = {
+  NODE_ENV: 'test',
+  VERCEL_ENV: 'preview',
+  APP_MODE: 'sandbox',
+  VEHICLE_API_BASE_URL: 'https://sandbox.surepass.app/api/v1',
+  VEHICLE_API_KEY: 'test-token',
+  VEHICLE_API_TOKEN: undefined,
+};
+
+test('rejects an empty registration number', async () => {
   await assert.rejects(
     () => fetchVehicleRecord({ registrationNumber: '' }),
-    /Invalid registration number/
+    /invalid registration number/i
   );
 });
 
-test('throws when registration number is invalid', async () => {
+test('rejects unsupported registration characters', async () => {
   await assert.rejects(
-    () => fetchVehicleRecord({ registrationNumber: 'BAD$REG' }),
-    /Invalid registration number/
+    () => fetchVehicleRecord({ registrationNumber: 'MH12/AB1234' }),
+    /invalid registration number/i
   );
 });
 
-test('throws when API credentials are missing', async () => {
-  const previousBaseUrl = process.env.VEHICLE_API_BASE_URL;
-  const previousKey = process.env.VEHICLE_API_KEY;
-  const previousToken = process.env.VEHICLE_API_TOKEN;
-
-  delete process.env.VEHICLE_API_BASE_URL;
-  delete process.env.VEHICLE_API_KEY;
-  delete process.env.VEHICLE_API_TOKEN;
-
-  try {
+test('requires provider credentials', async () => {
+  await withEnvironment({
+    NODE_ENV: 'test',
+    VERCEL_ENV: 'preview',
+    VEHICLE_API_BASE_URL: undefined,
+    VEHICLE_API_KEY: undefined,
+    VEHICLE_API_TOKEN: undefined,
+  }, async () => {
     await assert.rejects(
       () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
       /credentials are not configured/i
     );
-  } finally {
-    if (previousBaseUrl) process.env.VEHICLE_API_BASE_URL = previousBaseUrl;
-    if (previousKey) process.env.VEHICLE_API_KEY = previousKey;
-    if (previousToken) process.env.VEHICLE_API_TOKEN = previousToken;
-  }
+  });
 });
 
-test('maps a successful Surepass RC response', async () => {
-  const previousBaseUrl = process.env.VEHICLE_API_BASE_URL;
-  const previousKey = process.env.VEHICLE_API_KEY;
-  const previousToken = process.env.VEHICLE_API_TOKEN;
-
-  process.env.VEHICLE_API_BASE_URL = 'https://sandbox.surepass.app/api/v1';
-  process.env.VEHICLE_API_KEY = 'test-token';
-  delete process.env.VEHICLE_API_TOKEN;
-
+test('normalizes registration and maps the fields actually returned by Surepass', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({
-        data: {
-          rc_number: 'MH12AB1234',
-          owner_name: 'Aditi Sharma',
-          maker_description: 'Hyundai',
-          model: 'Creta',
-          fuel_type: 'Petrol',
-          registration_date: '2020-04-15',
-          insurance_status: 'Valid',
-          fitness_status: 'Current',
-          verification_score: 91,
-        },
-      }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    ) as Response;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: {
+      rc_number: 'MH12AB1234',
+      owner_name: 'Example Test Owner',
+      maker_description: 'Hyundai',
+      model: 'Creta',
+      fuel_type: 'Petrol',
+      registration_date: '2020-04-15',
+      insurance_status: 'Valid',
+      fitness_status: 'Current',
+      verification_score: 91,
+    },
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
   try {
-    const result = await fetchVehicleRecord({ registrationNumber: 'MH12AB1234' });
-
-    assert.equal(result.registrationNumber, 'MH12AB1234');
-    assert.equal(result.ownerName, 'Aditi Sharma');
-    assert.equal(result.make, 'Hyundai');
-    assert.equal(result.model, 'Creta');
-    assert.equal(result.fuelType, 'Petrol');
-    assert.equal(result.insuranceStatus, 'Valid');
-    assert.equal(result.fitnessStatus, 'Current');
-    assert.equal(result.verificationScore, 91);
-    assert.equal(result.source, 'surepass_rc_v2');
+    await withEnvironment(devEnv, async () => {
+      const result = await fetchVehicleRecord({ registrationNumber: 'MH 12 AB 1234' });
+      assert.equal(result.registrationNumber, 'MH12AB1234');
+      assert.equal(result.ownerName, 'Example Test Owner');
+      assert.equal(result.make, 'Hyundai');
+      assert.equal(result.model, 'Creta');
+      assert.equal(result.fuelType, 'Petrol');
+      assert.equal(result.registrationDate, '2020-04-15');
+      assert.equal(result.insuranceStatus, 'Valid');
+      assert.equal(result.fitnessStatus, 'Current');
+      assert.equal(result.verificationScore, 91);
+      assert.equal(result.source, 'surepass_rc_v2');
+    });
   } finally {
     globalThis.fetch = originalFetch;
-    if (previousBaseUrl) process.env.VEHICLE_API_BASE_URL = previousBaseUrl;
-    if (previousKey) process.env.VEHICLE_API_KEY = previousKey;
-    if (previousToken) process.env.VEHICLE_API_TOKEN = previousToken;
   }
 });
 
-test('throws on unexpected upstream response structure', async () => {
-  const previousBaseUrl = process.env.VEHICLE_API_BASE_URL;
-  const previousKey = process.env.VEHICLE_API_KEY;
-  const previousToken = process.env.VEHICLE_API_TOKEN;
-
-  process.env.VEHICLE_API_BASE_URL = 'https://sandbox.surepass.app/api/v1';
-  process.env.VEHICLE_API_KEY = 'test-token';
-  delete process.env.VEHICLE_API_TOKEN;
-
+test('does not invent a score or owner details when the provider omits them', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    }) as Response;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: { rc_number: 'MH12AB1234', maker_description: 'Tata' },
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
   try {
-    await assert.rejects(
-      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
-      /unexpected response structure/i
-    );
+    await withEnvironment(devEnv, async () => {
+      const result = await fetchVehicleRecord({ registrationNumber: 'MH12AB1234' });
+      assert.equal(result.verificationScore, null);
+      assert.equal(result.ownerName, null);
+      assert.equal(result.make, 'Tata');
+    });
   } finally {
     globalThis.fetch = originalFetch;
-    if (previousBaseUrl) process.env.VEHICLE_API_BASE_URL = previousBaseUrl;
-    if (previousKey) process.env.VEHICLE_API_KEY = previousKey;
-    if (previousToken) process.env.VEHICLE_API_TOKEN = previousToken;
   }
 });
 
-test('throws on upstream authentication or API failure', async () => {
-  const previousBaseUrl = process.env.VEHICLE_API_BASE_URL;
-  const previousKey = process.env.VEHICLE_API_KEY;
-  const previousToken = process.env.VEHICLE_API_TOKEN;
-
-  process.env.VEHICLE_API_BASE_URL = 'https://sandbox.surepass.app/api/v1';
-  process.env.VEHICLE_API_KEY = 'bad-token';
-  delete process.env.VEHICLE_API_TOKEN;
-
+test('rejects unexpected provider response structures', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    }) as Response;
+  globalThis.fetch = async () => new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 
   try {
-    await assert.rejects(
-      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
-      /temporarily unavailable/i
-    );
+    await withEnvironment(devEnv, async () => {
+      await assert.rejects(
+        () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+        /unexpected response structure/i
+      );
+    });
   } finally {
     globalThis.fetch = originalFetch;
-    if (previousBaseUrl) process.env.VEHICLE_API_BASE_URL = previousBaseUrl;
-    if (previousKey) process.env.VEHICLE_API_KEY = previousKey;
-    if (previousToken) process.env.VEHICLE_API_TOKEN = previousToken;
   }
 });
 
-test('throws for request timeout', async () => {
-  const previousBaseUrl = process.env.VEHICLE_API_BASE_URL;
-  const previousKey = process.env.VEHICLE_API_KEY;
-  const previousToken = process.env.VEHICLE_API_TOKEN;
+test('maps provider errors to a generic error without exposing upstream response data', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Unauthorized' }), {
+    status: 401,
+    headers: { 'Content-Type': 'application/json' },
+  });
 
-  process.env.VEHICLE_API_BASE_URL = 'https://sandbox.surepass.app/api/v1';
-  process.env.VEHICLE_API_KEY = 'test-token';
-  delete process.env.VEHICLE_API_TOKEN;
+  try {
+    await withEnvironment(devEnv, async () => {
+      await assert.rejects(
+        () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+        /temporarily unavailable/i
+      );
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
+test('handles request timeout', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
     throw new DOMException('The operation was aborted', 'AbortError');
   };
 
   try {
-    await assert.rejects(
-      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
-      /aborted|temporarily unavailable/i
-    );
+    await withEnvironment(devEnv, async () => {
+      await assert.rejects(
+        () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+        /timed out|aborted|temporarily unavailable/i
+      );
+    });
   } finally {
     globalThis.fetch = originalFetch;
-    if (previousBaseUrl) process.env.VEHICLE_API_BASE_URL = previousBaseUrl;
-    if (previousKey) process.env.VEHICLE_API_KEY = previousKey;
-    if (previousToken) process.env.VEHICLE_API_TOKEN = previousToken;
   }
 });
 
-test('throws when upstream registration number mismatches requested value', async () => {
-  const previousBaseUrl = process.env.VEHICLE_API_BASE_URL;
-  const previousKey = process.env.VEHICLE_API_KEY;
-  const previousToken = process.env.VEHICLE_API_TOKEN;
-
-  process.env.VEHICLE_API_BASE_URL = 'https://sandbox.surepass.app/api/v1';
-  process.env.VEHICLE_API_KEY = 'test-token';
-  delete process.env.VEHICLE_API_TOKEN;
-
+test('rejects a mismatched vehicle registration number', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({
-        data: {
-          rc_number: 'DL08AB1234',
-          owner_name: 'Aditi Sharma',
-          maker_description: 'Hyundai',
-          model: 'Creta',
-          fuel_type: 'Petrol',
-        },
-      }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    ) as Response;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: { rc_number: 'DL08AB1234', maker_description: 'Hyundai' },
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
   try {
-    await assert.rejects(
-      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
-      /registration number does not match/i
-    );
+    await withEnvironment(devEnv, async () => {
+      await assert.rejects(
+        () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+        /registration number does not match/i
+      );
+    });
   } finally {
     globalThis.fetch = originalFetch;
-    if (previousBaseUrl) process.env.VEHICLE_API_BASE_URL = previousBaseUrl;
-    if (previousKey) process.env.VEHICLE_API_KEY = previousKey;
-    if (previousToken) process.env.VEHICLE_API_TOKEN = previousToken;
   }
 });
 
-test('handles optional fields missing without crashing', async () => {
-  const previousBaseUrl = process.env.VEHICLE_API_BASE_URL;
-  const previousKey = process.env.VEHICLE_API_KEY;
-  const previousToken = process.env.VEHICLE_API_TOKEN;
+test('rejects production mode if the provider URL is not explicitly configured', async () => {
+  await withEnvironment({
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+    APP_MODE: 'production',
+    VEHICLE_API_BASE_URL: undefined,
+    VEHICLE_API_KEY: 'test-token',
+    VEHICLE_API_TOKEN: undefined,
+  }, async () => {
+    await assert.rejects(
+      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+      /credentials are not configured/i
+    );
+  });
+});
 
-  process.env.VEHICLE_API_BASE_URL = 'https://sandbox.surepass.app/api/v1';
-  process.env.VEHICLE_API_KEY = 'test-token';
-  delete process.env.VEHICLE_API_TOKEN;
+test('rejects sandbox hosts in production', async () => {
+  await withEnvironment({
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+    APP_MODE: 'production',
+    VEHICLE_API_BASE_URL: 'https://sandbox.surepass.app/api/v1',
+    VEHICLE_API_KEY: 'test-token',
+    VEHICLE_API_TOKEN: undefined,
+  }, async () => {
+    await assert.rejects(
+      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+      /sandbox/i
+    );
+  });
+});
 
+test('rejects a Surepass verification_failed response without treating null vehicle fields as a record', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({
-        data: {
-          rc_number: 'MH12AB1234',
-          owner_name: 'Aditi Sharma',
-        },
-      }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    ) as Response;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: {
+      client_id: 'rc_v2_sandbox_client',
+      rc_number: 'DL08AB1234',
+      owner_name: null,
+      maker_description: null,
+      maker_model: null,
+      fuel_type: null,
+    },
+    status_code: 422,
+    success: false,
+    message: 'Verification Failed.',
+    message_code: 'verification_failed',
+  }), { status: 422, headers: { 'Content-Type': 'application/json' } });
 
   try {
-    const result = await fetchVehicleRecord({ registrationNumber: 'MH12AB1234' });
-
-    assert.equal(result.make, 'Vehicle');
-    assert.equal(result.model, 'Model not available');
-    assert.equal(result.fuelType, 'Not available');
-    assert.equal(result.insuranceStatus, 'Not available');
-    assert.equal(result.fitnessStatus, 'Not available');
+    await withEnvironment(devEnv, async () => {
+      await assert.rejects(
+        () => fetchVehicleRecord({ registrationNumber: 'DL08AB1234' }),
+        /Surepass verification failed.*No verified vehicle details were returned/i
+      );
+    });
   } finally {
     globalThis.fetch = originalFetch;
-    if (previousBaseUrl) process.env.VEHICLE_API_BASE_URL = previousBaseUrl;
-    if (previousKey) process.env.VEHICLE_API_KEY = previousKey;
-    if (previousToken) process.env.VEHICLE_API_TOKEN = previousToken;
+  }
+});
+
+test('rejects a semantic Surepass verification failure even when the transport status is 200', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: { client_id: 'rc_v2_sandbox_client', rc_number: 'DL08AB1234' },
+    status_code: 422,
+    success: false,
+    message: 'Verification Failed.',
+    message_code: 'verification_failed',
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+  try {
+    await withEnvironment(devEnv, async () => {
+      await assert.rejects(
+        () => fetchVehicleRecord({ registrationNumber: 'DL08AB1234' }),
+        /Surepass verification failed/i
+      );
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

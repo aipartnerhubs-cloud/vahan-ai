@@ -25,6 +25,10 @@ export default function LoginPage() {
       setNotice('Setup is incomplete. An administrator must configure Supabase and the approved-agent allowlist in the hosting environment.');
     } else if (params.get('access') === 'denied') {
       setNotice('This account is not approved to access Vahan AI. Contact your administrator.');
+    } else if (params.get('authError') === 'recovery-link-invalid') {
+      setNotice('That recovery link is invalid or has expired. Request a new password recovery email.');
+    } else if (params.get('password') === 'updated') {
+      setNotice('Your password has been updated. Sign in with your new password.');
     }
   }, []);
 

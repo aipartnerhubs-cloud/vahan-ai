@@ -135,7 +135,7 @@ export async function POST(request: Request) {
     if (!burst.success) {
       const retryAfter = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
       return respond(
-        { error: 'Please wait before another lookup. The short-window limit is 3 checks in 5 minutes.', code: 'BURST_LIMIT_REACHED', limitType: 'burst' },
+        { error: 'Please wait before another lookup. The short-window limit is 3 checks in 5 minutes.', code: 'BURST_LIMIT_REACHED', limitType: 'burst', usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining: daily.remaining, dailyResetAt } },
         429,
         { 'Retry-After': String(retryAfter) }
       );
@@ -174,18 +174,19 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     if (/invalid registration number/i.test(message)) {
-      return respond({ error: 'Registration number format is invalid.' }, 400);
+      return respond({ error: 'Registration number format is invalid.', usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt } }, 400);
     }
     if (/surepass verification failed/i.test(message)) {
       return respond({
         error: 'Surepass could not verify this registration number in Sandbox. No vehicle details were returned. Confirm a supported test registration number and Sandbox access with Surepass.',
         code: 'SUREPASS_VERIFICATION_FAILED',
+        usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt },
       }, 422);
     }
     if (/not configured|credentials|production mode|sandbox|provider url/i.test(message)) {
-      return respond({ error: 'Vehicle verification is not configured for this environment.' }, 503);
+      return respond({ error: 'Vehicle verification is not configured for this environment.', usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt } }, 503);
     }
     console.error('Public RC lookup failed; provider details and personal data were omitted.');
-    return respond({ error: 'Vehicle verification is temporarily unavailable. Please try again.' }, 502);
+    return respond({ error: 'Vehicle verification is temporarily unavailable. Please try again.', usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt } }, 502);
   }
 }

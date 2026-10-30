@@ -85,6 +85,18 @@ function getWarnings(payload: unknown): string[] | undefined {
   return warnings.length ? warnings : undefined;
 }
 
+function isSurepassVerificationFailure(payload: unknown): boolean {
+  if (!isRecord(payload)) return false;
+
+  const messageCode = asString(payload.message_code)?.toLowerCase();
+  const statusCode = typeof payload.status_code === 'number'
+    ? payload.status_code
+    : Number(payload.status_code);
+
+  return messageCode === 'verification_failed' ||
+    (payload.success === false && Number.isFinite(statusCode) && statusCode >= 400);
+}
+
 function isProductionDeployment(): boolean {
   return (
     process.env.VERCEL_ENV === 'production' ||
@@ -163,13 +175,20 @@ export async function fetchVehicleRecord(input: VehicleLookupInput): Promise<Veh
     throw new Error('Vehicle verification service is temporarily unavailable.');
   }
 
+  const payload: unknown = await response.json().catch(() => null);
+
+  if (isSurepassVerificationFailure(payload)) {
+    throw new Error(
+      'Surepass verification failed for this registration number. No verified vehicle details were returned. Confirm a supported Sandbox test registration number and API access with Surepass.'
+    );
+  }
+
   if (!response.ok) {
     // Never log the upstream body: it may contain personal data or secrets.
     console.error('Surepass RC API request failed with status', response.status);
     throw new Error('Vehicle verification service is temporarily unavailable.');
   }
 
-  const payload: unknown = await response.json().catch(() => null);
   const data = getResponseData(payload);
   if (!data) {
     throw new Error('Surepass returned an unexpected response structure.');

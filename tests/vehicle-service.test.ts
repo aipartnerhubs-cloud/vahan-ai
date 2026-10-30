@@ -220,3 +220,54 @@ test('rejects sandbox hosts in production', async () => {
     );
   });
 });
+
+test('rejects a Surepass verification_failed response without treating null vehicle fields as a record', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: {
+      client_id: 'rc_v2_sandbox_client',
+      rc_number: 'DL08AB1234',
+      owner_name: null,
+      maker_description: null,
+      maker_model: null,
+      fuel_type: null,
+    },
+    status_code: 422,
+    success: false,
+    message: 'Verification Failed.',
+    message_code: 'verification_failed',
+  }), { status: 422, headers: { 'Content-Type': 'application/json' } });
+
+  try {
+    await withEnvironment(devEnv, async () => {
+      await assert.rejects(
+        () => fetchVehicleRecord({ registrationNumber: 'DL08AB1234' }),
+        /Surepass verification failed.*No verified vehicle details were returned/i
+      );
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('rejects a semantic Surepass verification failure even when the transport status is 200', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: { client_id: 'rc_v2_sandbox_client', rc_number: 'DL08AB1234' },
+    status_code: 422,
+    success: false,
+    message: 'Verification Failed.',
+    message_code: 'verification_failed',
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+  try {
+    await withEnvironment(devEnv, async () => {
+      await assert.rejects(
+        () => fetchVehicleRecord({ registrationNumber: 'DL08AB1234' }),
+        /Surepass verification failed/i
+      );
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

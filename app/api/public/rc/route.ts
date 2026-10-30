@@ -127,20 +127,17 @@ export async function POST(request: Request) {
   try {
     // No-login partner access is capped per public IP/network. The date suffix
     // creates a fresh quota at India midnight without requiring a partner account.
-    const [burst, daily] = await Promise.all([
-      limiters.burst.limit(clientKey),
-      limiters.daily.limit(`${clientKey}:${indiaDateKey}`),
-    ]);
-
+    const burst = await limiters.burst.limit(clientKey);
     if (!burst.success) {
       const retryAfter = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
       return respond(
-        { error: 'Please wait before another lookup. The short-window limit is 3 checks in 5 minutes.', code: 'BURST_LIMIT_REACHED', limitType: 'burst', usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining: daily.remaining, dailyResetAt } },
+        { error: 'Please wait before another lookup. The short-window limit is 3 checks in 5 minutes.', code: 'BURST_LIMIT_REACHED', limitType: 'burst' },
         429,
         { 'Retry-After': String(retryAfter) }
       );
     }
 
+    const daily = await limiters.daily.limit(`${clientKey}:${indiaDateKey}`);
     if (!daily.success) {
       const retryAfter = Math.max(1, Math.ceil(millisecondsUntilNextIndiaMidnight() / 1000));
       return respond(

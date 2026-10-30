@@ -1,10 +1,15 @@
-# Vahan AI — clean RC-first vehicle verification
+# Vahan AI — secure RC-first verification with public partner access
 
-Vahan AI is a Next.js application for authenticated vehicle-registration lookups through an approved Surepass RC V2 account. It starts with vehicle registration number lookup; a document upload is not required for the first lookup. Provider credentials stay on the server.
+Vahan AI is a Next.js application with two separated experiences: a secured administrator/agent workspace and a no-login public partner lookup at `/partner`. Both use the same server-only Surepass RC V2 adapter. The public partner page returns only an allowlisted set of non-owner vehicle fields; owner name and other personal details remain unavailable on that public path. Provider credentials stay on the server.
 
 ## Included in this rebuild
 
-- Mobile-responsive web app with English, Hindi and Marathi labels.
+- Mobile-responsive admin and public partner web apps with English, Hindi and Marathi labels.
+- WhatsApp share action that opens a pre-filled partner invitation message; the sender chooses the contact and confirms sending.
+- Installable partner PWA with an Add to Home Screen flow and no-cache service worker (vehicle/API data is never cached).
+- No-login partner route at `/partner`, separate from the secured admin route.
+- Public RC API requires explicit lawful-purpose confirmation, Upstash IP limits (5 per 10 minutes and 20 per day), and fails closed when the limiter is unavailable.
+- Public responses exclude owner name, address, mobile, chassis, engine and verification score.
 - Registration-first lookup with optional chassis/engine cross-check inputs.
 - Browser voice input for the registration number where Web Speech API is supported.
 - Supabase email/password login and server-side session verification.
@@ -84,9 +89,26 @@ npm run build
 
 A green build does not confirm that external credentials are valid. Live production readiness requires a real lookup against Surepass's approved production endpoint.
 
+## Public partner sharing and mobile installation
+
+1. Share the deployed `/partner` URL with partners. The Share on WhatsApp button opens WhatsApp with a pre-filled message; the user selects a recipient and sends it.
+2. On Android Chrome, use the Install app/Add to Home screen action. On iPhone, open the link in Safari, tap Share, then Add to Home Screen.
+3. The partner route does not require a Supabase account. It still requires an affirmative lawful-purpose confirmation and server-side Upstash IP rate limiting.
+4. In Vercel Settings → Deployment Protection, Vercel Authentication can protect Preview URLs separately from Vahan AI application authentication. For a shareable Preview test, turn off Require Log In for Preview only (or create a deployment-specific shareable bypass link). Do not disable protection across Production deployment URLs. The Vercel setting does not replace application/API security.
+
 ## Privacy and scope
 
-The app displays only fields returned by the configured provider, and it does not invent a confidence score. Owner-related data must be used only with proper authorization and a lawful purpose. Reverse lookups for private mobile numbers, PAN details or personal addresses are not included in this MVP; they require separate, documented authorization and compliant data sources.
+The public route displays only the allowlisted fields returned by the provider, and does not invent a confidence score. Owner name, address, mobile, chassis, engine and verification score are not returned on the anonymous partner API. Owner-related data must be used only with proper authorization and a lawful purpose. Reverse lookups for private mobile numbers, PAN details or personal addresses are not included in this MVP; they require separate, documented authorization and compliant data sources.
+
+## Public partner rollout checklist
+
+- [ ] Preview deployment uses the `rebuild/vahan-ai-clean` branch and is publicly reachable (or has a deployment-specific shareable link).
+- [ ] Upstash Redis REST URL/token are configured in Preview and Production for anonymous rate limiting.
+- [ ] `/partner` opens on a mobile browser without requiring Vercel or Supabase login.
+- [ ] WhatsApp share opens with the correct `/partner` URL.
+- [ ] Android Add to Home Screen and iPhone Safari Add to Home Screen are tested.
+- [ ] Public API returns only allowlisted non-owner vehicle fields.
+- [ ] Public IP limits and fail-closed behavior are verified.
 
 ## Production checklist
 

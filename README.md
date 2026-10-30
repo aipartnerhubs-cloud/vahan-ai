@@ -8,7 +8,7 @@ Vahan AI is a Next.js application with two separated experiences: a secured admi
 - WhatsApp share action that opens a pre-filled partner invitation message; the sender chooses the contact and confirms sending.
 - Installable partner PWA with an Add to Home Screen flow and no-cache service worker (vehicle/API data is never cached).
 - No-login partner route at `/partner`, separate from the secured admin route.
-- Public RC API requires explicit lawful-purpose confirmation, Upstash IP limits (5 per 10 minutes and 20 per day), and fails closed when the limiter is unavailable.
+- Public RC API requires explicit lawful-purpose confirmation, Upstash limits of 3 checks per 5 minutes and 5 checks per India calendar day per public IP/network, and fails closed when the limiter is unavailable. The daily quota resets at 12:00 AM IST.
 - Public responses exclude owner name, address, mobile, chassis, engine and verification score.
 - Registration-first lookup with optional chassis/engine cross-check inputs.
 - Browser voice input for the registration number where Web Speech API is supported.
@@ -93,7 +93,7 @@ A green build does not confirm that external credentials are valid. Live product
 
 1. Share the deployed `/partner` URL with partners. The Share on WhatsApp button opens WhatsApp with a pre-filled message; the user selects a recipient and sends it.
 2. On Android Chrome, use the Install app/Add to Home screen action. On iPhone, open the link in Safari, tap Share, then Add to Home Screen.
-3. The partner route does not require a Supabase account. It still requires an affirmative lawful-purpose confirmation and server-side Upstash IP rate limiting.
+3. The partner route does not require a Supabase account. In this no-login beta, the five-per-day quota is enforced per public IP/network, not per verified person; partners sharing one office/home Wi-Fi share the quota, and changing networks can change the IP bucket. For reliable person-wise quotas and partner identity, add mobile OTP registration in the later Android app. The route requires affirmative lawful-purpose confirmation and server-side Upstash rate limiting.
 4. In Vercel Settings → Deployment Protection, Vercel Authentication can protect Preview URLs separately from Vahan AI application authentication. For a shareable Preview test, turn off Require Log In for Preview only (or create a deployment-specific shareable bypass link). Do not disable protection across Production deployment URLs. The Vercel setting does not replace application/API security.
 
 ## Privacy and scope
@@ -108,7 +108,8 @@ The public route displays only the allowlisted fields returned by the provider, 
 - [ ] WhatsApp share opens with the correct `/partner` URL.
 - [ ] Android Add to Home Screen and iPhone Safari Add to Home Screen are tested.
 - [ ] Public API returns only allowlisted non-owner vehicle fields.
-- [ ] Public IP limits and fail-closed behavior are verified.
+- [ ] Public IP limit is 3 per 5 minutes and 5 per India calendar day; midnight IST reset and fail-closed behavior are verified.
+- [ ] Explain to pilot partners that one shared Wi-Fi/network shares the same free quota.
 
 ## Production checklist
 

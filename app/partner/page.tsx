@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from 'react';
 
 type Language = 'en' | 'hi' | 'mr';
 
-type PublicUsage = { dailyLimit: number; dailyRemaining: number; dailyResetAt: string };
 
 type PublicVehicleResult = {
   registrationNumber: string;
@@ -53,7 +52,7 @@ const copy = {
     shareText: 'Open Vahan AI Partner Vehicle Lookup:',
     footer: 'Vahan AI · Partner access',
     privacy: 'Public access is rate-limited. No owner personal details are displayed.',
-    freeLimit: 'Free Beta: maximum 5 checks per network per day. Resets at midnight IST.',
+    freeLimit: 'Preview testing: the 5-check daily quota is disabled. A short-window guard of 3 checks per 5 minutes remains.',
     consentRequired: 'Please confirm that you are authorized to request this lookup.',
   },
   hi: {
@@ -117,7 +116,7 @@ const copy = {
     shareText: 'Vahan AI Partner Vehicle Lookup उघडा:',
     footer: 'Vahan AI · पार्टनर प्रवेश',
     privacy: 'सार्वजनिक lookup वर मर्यादा आहेत. मालकाची वैयक्तिक माहिती दाखवली जात नाही.',
-    freeLimit: 'मोफत बीटा: एका नेटवर्कवरून दररोज जास्तीत जास्त 5 तपासण्या. दररोज रात्री 12 वाजता IST मर्यादा रीसेट होईल.',
+    freeLimit: 'Preview testing: दररोजच्या 5 तपासण्यांची मर्यादा काढली आहे. गैरवापर टाळण्यासाठी 5 मिनिटांत 3 तपासण्यांची मर्यादा लागू आहे.',
     consentRequired: 'कृपया तुम्ही या lookup साठी अधिकृत असल्याची पुष्टी करा.',
   },
 } as const;
@@ -127,7 +126,6 @@ export default function PartnerPage() {
   const [registrationNumber, setRegistrationNumber] = useState('');
   const [authorizedPurpose, setAuthorizedPurpose] = useState(false);
   const [result, setResult] = useState<PublicVehicleResult | null>(null);
-  const [usage, setUsage] = useState<PublicUsage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [installMessage, setInstallMessage] = useState('');
@@ -192,8 +190,7 @@ export default function PartnerPage() {
           authorizedPurpose: true,
         }),
       });
-      const data = (await response.json()) as { result?: PublicVehicleResult; error?: string; usage?: PublicUsage };
-      if (data.usage) setUsage(data.usage);
+      const data = (await response.json()) as { result?: PublicVehicleResult; error?: string };
       if (!response.ok || !data.result) throw new Error(data.error || t.error);
       setResult(data.result);
     } catch (submitError) {
@@ -204,13 +201,7 @@ export default function PartnerPage() {
   }
 
   const display = (value: string | null) => value || t.missing;
-  const usageText = usage
-    ? language === 'hi'
-      ? `आज इस नेटवर्क से ${usage.dailyLimit - usage.dailyRemaining}/${usage.dailyLimit} जाँच इस्तेमाल हुईं। ${usage.dailyRemaining} बाकी हैं।`
-      : language === 'mr'
-        ? `आज या नेटवर्कवरून ${usage.dailyLimit - usage.dailyRemaining}/${usage.dailyLimit} तपासण्या वापरल्या. ${usage.dailyRemaining} बाकी आहेत.`
-        : `${usage.dailyRemaining} of ${usage.dailyLimit} free checks remain on this network today.`
-    : t.freeLimit;
+  const usageText = t.freeLimit;
   const details: Array<[string, string | null]> = result ? [
     [t.status, result.status],
     [t.make, result.make],

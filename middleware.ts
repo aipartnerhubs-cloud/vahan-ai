@@ -24,6 +24,8 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname === '/api' || pathname.startsWith('/api/');
   const isLogin = pathname === '/login';
+  const isPublicAuthRoute =
+    isLogin || pathname === '/forgot-password' || pathname === '/auth/callback';
 
   if (!SUPABASE_URL || !SUPABASE_KEY || (isProductionDeployment() && !isAgentAllowlistConfigured())) {
     if (isApi) {
@@ -32,7 +34,7 @@ export async function middleware(request: NextRequest) {
         request
       );
     }
-    if (isLogin) return withSecurityHeaders(NextResponse.next(), request);
+    if (isPublicAuthRoute) return withSecurityHeaders(NextResponse.next(), request);
 
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = '/login';
@@ -79,7 +81,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (!isLogin && (!allowed || error)) {
+  if (!isPublicAuthRoute && (!allowed || error)) {
     if (isApi) {
       return withSecurityHeaders(NextResponse.json({ error: 'Authentication required.' }, { status: 401 }), request);
     }

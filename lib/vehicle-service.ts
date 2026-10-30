@@ -133,7 +133,10 @@ export async function fetchVehicleRecord(
   }
 
   const baseUrl = process.env.VEHICLE_API_BASE_URL || DEFAULT_BASE_URL;
-  const apiKey = process.env.VEHICLE_API_KEY || process.env.VEHICLE_API_TOKEN;
+  const apiKey =
+    process.env.SUREPASS_API_TOKEN ||
+    process.env.VEHICLE_API_KEY ||
+    process.env.VEHICLE_API_TOKEN;
 
   if (!baseUrl || !apiKey) {
     throw new Error('Surepass API credentials are not configured.');

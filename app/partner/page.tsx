@@ -14,7 +14,6 @@ type PublicVehicleResult = {
   insuranceStatus: string | null;
   fitnessStatus: string | null;
   source: string;
-  warnings?: string[];
 };
 
 type BeforeInstallPromptEvent = Event & {
@@ -309,12 +308,6 @@ export default function PartnerPage() {
                 ))}
                 <div className="detail-item"><span>{t.source}</span><strong>Surepass RC V2</strong></div>
               </div>
-              {result.warnings?.length ? (
-                <div className="warning-list">
-                  <strong>Provider notes</strong>
-                  <ul>{result.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
-                </div>
-              ) : null}
             </>
           ) : (
             <div className="empty-state">

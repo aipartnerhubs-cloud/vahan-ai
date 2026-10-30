@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useState } from 'react';
 
 type Language = 'en' | 'hi' | 'mr';
 
+type PublicUsage = { dailyLimit: number; dailyRemaining: number; dailyResetAt: string };
+
 type PublicVehicleResult = {
   registrationNumber: string;
   status: string;
@@ -51,6 +53,7 @@ const copy = {
     shareText: 'Open Vahan AI Partner Vehicle Lookup:',
     footer: 'Vahan AI · Partner access',
     privacy: 'Public access is rate-limited. No owner personal details are displayed.',
+    freeLimit: 'Free Beta: maximum 5 checks per network per day. Resets at midnight IST.',
     consentRequired: 'Please confirm that you are authorized to request this lookup.',
   },
   hi: {
@@ -82,6 +85,7 @@ const copy = {
     shareText: 'Vahan AI Partner Vehicle Lookup खोलें:',
     footer: 'Vahan AI · पार्टनर एक्सेस',
     privacy: 'सार्वजनिक lookup पर सीमा लागू है। मालिक की निजी जानकारी नहीं दिखाई जाती।',
+    freeLimit: 'मुफ्त बीटा: एक नेटवर्क से रोज़ अधिकतम 5 जाँच। हर रात 12 बजे IST पर सीमा रीसेट होगी।',
     consentRequired: 'कृपया पुष्टि करें कि आप इस lookup के लिए अधिकृत हैं।',
   },
   mr: {
@@ -113,6 +117,7 @@ const copy = {
     shareText: 'Vahan AI Partner Vehicle Lookup उघडा:',
     footer: 'Vahan AI · पार्टनर प्रवेश',
     privacy: 'सार्वजनिक lookup वर मर्यादा आहेत. मालकाची वैयक्तिक माहिती दाखवली जात नाही.',
+    freeLimit: 'मोफत बीटा: एका नेटवर्कवरून दररोज जास्तीत जास्त 5 तपासण्या. दररोज रात्री 12 वाजता IST मर्यादा रीसेट होईल.',
     consentRequired: 'कृपया तुम्ही या lookup साठी अधिकृत असल्याची पुष्टी करा.',
   },
 } as const;
@@ -122,6 +127,7 @@ export default function PartnerPage() {
   const [registrationNumber, setRegistrationNumber] = useState('');
   const [authorizedPurpose, setAuthorizedPurpose] = useState(false);
   const [result, setResult] = useState<PublicVehicleResult | null>(null);
+  const [usage, setUsage] = useState<PublicUsage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [installMessage, setInstallMessage] = useState('');
@@ -186,7 +192,8 @@ export default function PartnerPage() {
           authorizedPurpose: true,
         }),
       });
-      const data = (await response.json()) as { result?: PublicVehicleResult; error?: string };
+      const data = (await response.json()) as { result?: PublicVehicleResult; error?: string; usage?: PublicUsage };
+      if (data.usage) setUsage(data.usage);
       if (!response.ok || !data.result) throw new Error(data.error || t.error);
       setResult(data.result);
     } catch (submitError) {
@@ -197,6 +204,13 @@ export default function PartnerPage() {
   }
 
   const display = (value: string | null) => value || t.missing;
+  const usageText = usage
+    ? language === 'hi'
+      ? `आज इस नेटवर्क से ${usage.dailyLimit - usage.dailyRemaining}/${usage.dailyLimit} जाँच इस्तेमाल हुईं। ${usage.dailyRemaining} बाकी हैं।`
+      : language === 'mr'
+        ? `आज या नेटवर्कवरून ${usage.dailyLimit - usage.dailyRemaining}/${usage.dailyLimit} तपासण्या वापरल्या. ${usage.dailyRemaining} बाकी आहेत.`
+        : `${usage.dailyRemaining} of ${usage.dailyLimit} free checks remain on this network today.`
+    : t.freeLimit;
   const details: Array<[string, string | null]> = result ? [
     [t.status, result.status],
     [t.make, result.make],
@@ -291,6 +305,7 @@ export default function PartnerPage() {
           </form>
           {error ? <div className="alert error" role="alert">{error}</div> : null}
           {installMessage ? <div className="alert info" role="status">{installMessage}</div> : null}
+          <p className="privacy-note"><span>◷</span>{usageText}</p>
           <p className="privacy-note"><span>▣</span>{t.privacy}</p>
         </div>
 

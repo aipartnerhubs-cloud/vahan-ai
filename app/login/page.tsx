@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const configured = Boolean(
@@ -57,9 +58,9 @@ export default function LoginPage() {
 
   return (
     <main className="login-shell">
-      <a className="brand login-brand" href="/">
+      <Link className="brand login-brand" href="/">
         <span className="brand-mark">V</span><span>Vahan <strong>AI</strong></span>
-      </a>
+      </Link>
       <section className="login-card">
         <div className="login-symbol">V</div>
         <p className="eyebrow">AUTHORIZED ACCESS</p>

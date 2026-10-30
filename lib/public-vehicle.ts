@@ -1,6 +1,6 @@
 import type { VehicleResult } from '@/lib/vehicle-service';
 
-export type PublicVehicleResult = Omit<VehicleResult, 'ownerName' | 'verificationScore'>;
+export type PublicVehicleResult = Omit<VehicleResult, 'ownerName' | 'verificationScore' | 'warnings'>;
 
 /**
  * Allowlist only generic vehicle fields for no-login partner access.
@@ -17,6 +17,5 @@ export function toPublicVehicleResult(result: VehicleResult): PublicVehicleResul
     insuranceStatus: result.insuranceStatus,
     fitnessStatus: result.fitnessStatus,
     source: result.source,
-    ...(result.warnings ? { warnings: result.warnings } : {}),
   };
 }

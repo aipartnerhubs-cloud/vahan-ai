@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { getPublicRateLimiters } from '@/lib/rate-limit';
 import { fetchVehicleRecord } from '@/lib/vehicle-service';
 import { toPublicVehicleResult } from '@/lib/public-vehicle';
+import { getIndiaCalendarDate, millisecondsUntilNextIndiaMidnight, PUBLIC_PARTNER_DAILY_LIMIT } from '@/lib/public-usage-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -83,36 +84,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const ip = getTrustedClientIp(request.headers);
-  if (!ip) {
-    return respond({ error: 'Public lookup is unavailable because the client address could not be verified.' }, 503);
-  }
-
-  const limiters = getPublicRateLimiters();
-  if (!limiters) {
-    return respond({ error: 'Public lookup is not configured yet. The administrator must configure Upstash rate limiting.' }, 503);
-  }
-
-  const clientKey = createHash('sha256').update(ip).digest('hex');
-  try {
-    const [shortWindow, daily] = await Promise.all([
-      limiters.tenMinutes.limit(clientKey),
-      limiters.daily.limit(clientKey),
-    ]);
-    const blocked = [shortWindow, daily].find((result) => !result.success);
-    if (blocked) {
-      const retryAfter = Math.max(1, Math.ceil((blocked.reset - Date.now()) / 1000));
-      return respond(
-        { error: 'Public lookup limit reached. Please try again later.' },
-        429,
-        { 'Retry-After': String(retryAfter) }
-      );
-    }
-  } catch {
-    console.error('Public RC rate-limit provider unavailable.');
-    return respond({ error: 'Public lookup is temporarily unavailable. Please try again later.' }, 503);
-  }
-
   const contentLength = Number(request.headers.get('content-length') || 0);
   if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
     return respond({ error: 'Request body is too large.' }, 413);
@@ -138,13 +109,68 @@ export async function POST(request: Request) {
     return respond({ error: parsed.error.issues[0]?.message || 'Invalid request fields.' }, 400);
   }
 
+  const ip = getTrustedClientIp(request.headers);
+  if (!ip) {
+    return respond({ error: 'Public lookup is unavailable because the client address could not be verified.' }, 503);
+  }
+
+  const limiters = getPublicRateLimiters();
+  if (!limiters) {
+    return respond({ error: 'Public lookup is not configured yet. The administrator must configure Upstash rate limiting.' }, 503);
+  }
+
+  const clientKey = createHash('sha256').update(ip).digest('hex');
+  const indiaDateKey = getIndiaCalendarDate();
+  let dailyRemaining = 0;
+  const dailyResetAt = new Date(Date.now() + millisecondsUntilNextIndiaMidnight()).toISOString();
+
+  try {
+    // No-login partner access is capped per public IP/network. The date suffix
+    // creates a fresh quota at India midnight without requiring a partner account.
+    const [burst, daily] = await Promise.all([
+      limiters.burst.limit(clientKey),
+      limiters.daily.limit(`${clientKey}:${indiaDateKey}`),
+    ]);
+
+    if (!burst.success) {
+      const retryAfter = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
+      return respond(
+        { error: 'Please wait before another lookup. The short-window limit is 3 checks in 5 minutes.', code: 'BURST_LIMIT_REACHED', limitType: 'burst' },
+        429,
+        { 'Retry-After': String(retryAfter) }
+      );
+    }
+
+    if (!daily.success) {
+      const retryAfter = Math.max(1, Math.ceil(millisecondsUntilNextIndiaMidnight() / 1000));
+      return respond(
+        {
+          error: 'Free daily limit reached: maximum 5 vehicle checks per network per India calendar day. Try again after midnight IST.',
+          code: 'DAILY_LIMIT_REACHED',
+          limitType: 'daily',
+          usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining: 0, dailyResetAt },
+        },
+        429,
+        { 'Retry-After': String(retryAfter) }
+      );
+    }
+
+    dailyRemaining = daily.remaining;
+  } catch {
+    console.error('Public RC rate-limit provider unavailable.');
+    return respond({ error: 'Vehicle lookup is temporarily unavailable because usage protection could not be verified.' }, 503);
+  }
+
   try {
     const result = await fetchVehicleRecord({
       registrationNumber: parsed.data.registrationNumber,
     });
     // Public partner response is explicitly allowlisted. Owner name and all
     // other personal/identity fields remain server-side and are never sent.
-    return respond({ result: toPublicVehicleResult(result) });
+    return respond({
+      result: toPublicVehicleResult(result),
+      usage: { dailyLimit: PUBLIC_PARTNER_DAILY_LIMIT, dailyRemaining, dailyResetAt },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     if (/invalid registration number/i.test(message)) {

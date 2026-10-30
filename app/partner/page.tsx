@@ -210,7 +210,7 @@ export default function PartnerPage() {
         </a>
         <div className="partner-tools">
           <label className="language-picker">
-            <span>{t.language || 'Language'}</span>
+            <span>Language</span>
             <select value={language} onChange={(event) => setLanguage(event.target.value as Language)} aria-label="Language">
               <option value="en">English</option>
               <option value="hi">हिन्दी</option>

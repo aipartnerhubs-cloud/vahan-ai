@@ -15,7 +15,7 @@ const requestSchema = z.object({
     .trim()
     .min(1, 'Registration number is required.')
     .max(25, 'Registration number is too long.')
-    .regex(/^[A-Za-z0-9\\s-]+$/, 'Registration number format is invalid.'),
+    .regex(/^[A-Za-z0-9\s-]+$/, 'Registration number format is invalid.'),
   authorizedPurpose: z.literal(true, {
     errorMap: () => ({ message: 'Please confirm that you are authorized to request this lookup.' }),
   }),

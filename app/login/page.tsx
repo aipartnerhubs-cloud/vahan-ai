@@ -84,6 +84,9 @@ export default function LoginPage() {
             {loading ? 'Signing in…' : 'Sign in securely'} <span aria-hidden="true">→</span>
           </button>
         </form>
+        <p className="login-footnote">
+          <Link href="/forgot-password" className="text-link">Forgot your password?</Link>
+        </p>
         <p className="login-footnote">Public self-registration is disabled. Access is provisioned by an administrator.</p>
       </section>
       <p className="login-bottom">Vahan AI · Secure vehicle verification</p>

@@ -133,13 +133,26 @@ export async function POST(request: Request) {
       );
     }
   } catch (error) {
-    const failure = error && typeof error === 'object' ? error as { name?: unknown; status?: unknown; statusCode?: unknown; code?: unknown } : {};
+    const failure = error && typeof error === 'object' ? error as {
+      name?: unknown; message?: unknown; status?: unknown; statusCode?: unknown; code?: unknown;
+      response?: { status?: unknown };
+    } : {};
     const safeCode = typeof failure.code === 'string' && /^[A-Z0-9_-]{1,48}$/i.test(failure.code) ? failure.code : undefined;
-    const safeStatus = Number.isInteger(failure.status) ? failure.status : Number.isInteger(failure.statusCode) ? failure.statusCode : undefined;
+    const responseStatus = failure.response?.status;
+    const safeStatus = Number.isInteger(failure.status) ? failure.status
+      : Number.isInteger(failure.statusCode) ? failure.statusCode
+      : Number.isInteger(responseStatus) ? responseStatus : undefined;
+    const safeMessage = typeof failure.message === 'string'
+      ? failure.message
+          .replace(/https?:\/\/\S+/gi, '[endpoint]')
+          .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+          .slice(0, 160)
+      : undefined;
     console.error('Public RC burst-limit provider unavailable.', {
       errorName: typeof failure.name === 'string' ? failure.name : 'UnknownError',
       status: safeStatus,
       code: safeCode,
+      message: safeMessage,
     });
     return respond({ error: 'Vehicle lookup is temporarily unavailable because usage protection could not be verified.' }, 503);
   }

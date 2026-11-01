@@ -23,6 +23,8 @@ Vahan AI is a Next.js application with two separated experiences: a secured admi
 
 Configure these values in your deployment provider. Do not commit real values to Git.
 
+Select the RC provider with `VEHICLE_PROVIDER` (`surepass` is the default; `eko` enables Eko's Vehicle & RC UAT adapter). Eko requires server-side `EKO_DEVELOPER_KEY`, `EKO_ACCESS_KEY`, and `EKO_INITIATOR_ID`. In Preview, the adapter defaults to Eko's documented UAT base URL `https://staging.eko.in/ekoapi/v3`. It signs each request server-side using Eko's documented timestamped HMAC scheme. Do not put any Eko credential in a `NEXT_PUBLIC_*` variable. Eko production activation must use a production URL and credentials issued/approved by Eko; the staging host is rejected when the app runs in Production.
+
 | Variable | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |

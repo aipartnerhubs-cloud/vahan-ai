@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createHmac } from 'node:crypto';
+
 export type VehicleLookupInput = {
   registrationNumber: string;
   chassisNumber?: string;
@@ -17,7 +19,7 @@ export type VehicleResult = {
   insuranceStatus: string | null;
   fitnessStatus: string | null;
   verificationScore: number | null;
-  source: 'surepass_rc_v2';
+  source: 'surepass_rc_v2' | 'eko_vehicle_rc';
   warnings?: string[];
 };
 
@@ -104,12 +106,128 @@ function isProductionDeployment(): boolean {
   );
 }
 
+
+const EKO_DEFAULT_SANDBOX_URL = 'https://staging.eko.in/ekoapi/v3';
+
+async function fetchEkoVehicleRecord(registrationNumber: string): Promise<VehicleResult> {
+  const production = isProductionDeployment();
+  const appMode = (process.env.APP_MODE || '').trim().toLowerCase();
+  const developerKey = process.env.EKO_DEVELOPER_KEY?.trim();
+  const accessKey = process.env.EKO_ACCESS_KEY?.trim();
+  const initiatorId = process.env.EKO_INITIATOR_ID?.trim();
+  const configuredBaseUrl = process.env.EKO_API_BASE_URL?.trim();
+  const baseUrl = configuredBaseUrl || (production ? '' : EKO_DEFAULT_SANDBOX_URL);
+
+  if (!developerKey || !accessKey || !initiatorId || !baseUrl) {
+    throw new Error('Eko provider credentials are not configured.');
+  }
+  if (production && appMode !== 'production') {
+    throw new Error('Production provider mode is not configured.');
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(baseUrl);
+  } catch {
+    throw new Error('Eko provider URL is invalid.');
+  }
+
+  if (
+    parsedUrl.protocol !== 'https:' ||
+    parsedUrl.username ||
+    parsedUrl.password ||
+    parsedUrl.search ||
+    parsedUrl.hash ||
+    (production && /staging/i.test(parsedUrl.hostname))
+  ) {
+    throw new Error('Eko provider URL is invalid for this environment.');
+  }
+
+  const endpoint = parsedUrl.toString().replace(/\\/+$/, '') + '/tools/kyc/vehicle-rc';
+  const timestamp = Date.now().toString();
+  // Eko requires the base64-encoded access key string itself as the HMAC key.
+  const encodedAccessKey = Buffer.from(accessKey, 'utf8').toString('base64');
+  const signature = createHmac('sha256', encodedAccessKey).update(timestamp).digest('base64');
+  const clientRefId = Date.now().toString(36) +
+    createHash('sha256').update(timestamp + ':' + registrationNumber).digest('hex').slice(0, 8);
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        developer_key: developerKey,
+        'secret-key': signature,
+        'secret-key-timestamp': timestamp,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        initiator_id: initiatorId,
+        client_ref_id: clientRefId.slice(0, 20),
+        vehicle_number: registrationNumber,
+      }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (error) {
+    if (error instanceof Error && /abort|timeout/i.test(error.message)) {
+      throw new Error('Vehicle verification request timed out.');
+    }
+    throw new Error('Vehicle verification service is temporarily unavailable.');
+  }
+
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    console.error('Eko RC API request failed with status', response.status);
+    throw new Error('Vehicle verification service is temporarily unavailable.');
+  }
+  if (!isRecord(payload) || Number(payload.status) !== 0) {
+    throw new Error('Eko verification failed. No verified vehicle details were returned.');
+  }
+
+  const data = getResponseData(payload);
+  if (!data) {
+    throw new Error('Eko returned an unexpected response structure.');
+  }
+
+  const returnedRegistration = normalizeRegistrationNumber(
+    asString(readField(data, ['reg_no', 'registration_number', 'registrationNumber'])) ||
+      registrationNumber
+  );
+  if (returnedRegistration !== registrationNumber) {
+    throw new Error('Returned vehicle registration number does not match.');
+  }
+
+  return {
+    registrationNumber: returnedRegistration,
+    status: asString(readField(data, ['rc_status', 'status'])) || 'Record returned by provider',
+    ownerName: asString(readField(data, ['owner', 'owner_name'])),
+    make: asString(readField(data, ['vehicle_manufacturer_name', 'manufacturer', 'make'])),
+    model: asString(readField(data, ['model', 'model_name'])),
+    fuelType: asString(readField(data, ['fuel_type', 'fuelType'])),
+    registrationDate: asString(readField(data, ['reg_date', 'registration_date'])),
+    insuranceStatus: asString(readField(data, ['vehicle_insurance_upto', 'insurance_status'])),
+    fitnessStatus: asString(readField(data, ['fit_upto', 'fitness_upto', 'fitness_status'])),
+    verificationScore: null,
+    source: 'eko_vehicle_rc',
+    warnings: getWarnings(payload),
+  };
+}
+
 export async function fetchVehicleRecord(input: VehicleLookupInput): Promise<VehicleResult> {
   const registrationNumber = normalizeRegistrationNumber(input.registrationNumber || '');
   if (!validRegistrationNumber(registrationNumber)) {
     throw new Error('Invalid registration number.');
   }
 
+  const provider = (process.env.VEHICLE_PROVIDER || 'surepass').trim().toLowerCase();
+  if (provider === 'eko') {
+    return fetchEkoVehicleRecord(registrationNumber);
+  }
+  if (provider !== 'surepass') {
+    throw new Error('Selected vehicle provider is not supported.');
+  }
   const production = isProductionDeployment();
   const appMode = (process.env.APP_MODE || '').trim().toLowerCase();
   const configuredBaseUrl = process.env.VEHICLE_API_BASE_URL?.trim();

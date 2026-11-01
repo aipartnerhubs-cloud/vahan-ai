@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -28,6 +29,11 @@ const devEnv = {
   NODE_ENV: 'test',
   VERCEL_ENV: 'preview',
   APP_MODE: 'sandbox',
+  VEHICLE_PROVIDER: 'surepass',
+  EKO_API_BASE_URL: undefined,
+  EKO_DEVELOPER_KEY: undefined,
+  EKO_ACCESS_KEY: undefined,
+  EKO_INITIATOR_ID: undefined,
   VEHICLE_API_BASE_URL: 'https://sandbox.surepass.app/api/v1',
   VEHICLE_API_KEY: 'test-token',
   VEHICLE_API_TOKEN: undefined,
@@ -270,4 +276,122 @@ test('rejects a semantic Surepass verification failure even when the transport s
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+
+const ekoEnv = {
+  NODE_ENV: 'test',
+  VERCEL_ENV: 'preview',
+  APP_MODE: 'sandbox',
+  VEHICLE_PROVIDER: 'eko',
+  EKO_API_BASE_URL: 'https://staging.eko.in/ekoapi/v3',
+  EKO_DEVELOPER_KEY: 'test-developer-key',
+  EKO_ACCESS_KEY: 'test-access-key',
+  EKO_INITIATOR_ID: '9999999999',
+  VEHICLE_API_BASE_URL: undefined,
+  VEHICLE_API_KEY: undefined,
+  VEHICLE_API_TOKEN: undefined,
+};
+
+test('uses Eko UAT with a fresh HMAC signature and maps the documented RC fields', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = '';
+  let requestedInit: RequestInit | undefined;
+  globalThis.fetch = async (input, init) => {
+    requestedUrl = String(input);
+    requestedInit = init;
+    return new Response(JSON.stringify({
+      status: 0,
+      response_status_id: 0,
+      message: 'Vehicle RC verification successful',
+      data: {
+        reg_no: 'MH12AB1234',
+        rc_status: 'Active',
+        owner: 'Example Test Owner',
+        vehicle_manufacturer_name: 'Hyundai',
+        model: 'Creta',
+        fuel_type: 'Petrol',
+        reg_date: '2021-01-10',
+        vehicle_insurance_upto: '2027-01-09',
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    await withEnvironment(ekoEnv, async () => {
+      const result = await fetchVehicleRecord({ registrationNumber: 'MH 12 AB 1234' });
+      assert.equal(requestedUrl, 'https://staging.eko.in/ekoapi/v3/tools/kyc/vehicle-rc');
+      assert.equal(result.registrationNumber, 'MH12AB1234');
+      assert.equal(result.status, 'Active');
+      assert.equal(result.ownerName, 'Example Test Owner');
+      assert.equal(result.make, 'Hyundai');
+      assert.equal(result.model, 'Creta');
+      assert.equal(result.fuelType, 'Petrol');
+      assert.equal(result.registrationDate, '2021-01-10');
+      assert.equal(result.insuranceStatus, '2027-01-09');
+      assert.equal(result.source, 'eko_vehicle_rc');
+
+      const headers = requestedInit?.headers as Record<string, string>;
+      const timestamp = headers['secret-key-timestamp'];
+      const expectedSignature = createHmac(
+        'sha256',
+        Buffer.from('test-access-key', 'utf8').toString('base64')
+      ).update(timestamp).digest('base64');
+      assert.equal(headers.developer_key, 'test-developer-key');
+      assert.equal(headers['secret-key'], expectedSignature);
+
+      const body = JSON.parse(String(requestedInit?.body));
+      assert.equal(body.initiator_id, '9999999999');
+      assert.equal(body.vehicle_number, 'MH12AB1234');
+      assert.ok(body.client_ref_id.length <= 20);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('requires all Eko sandbox credentials', async () => {
+  await withEnvironment({
+    ...ekoEnv,
+    EKO_ACCESS_KEY: undefined,
+  }, async () => {
+    await assert.rejects(
+      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+      /Eko provider credentials are not configured/i
+    );
+  });
+});
+
+test('rejects Eko semantic verification failures without mapping an empty record', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    status: 1,
+    message: 'Invalid or unrecognised vehicle number',
+    data: null,
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+  try {
+    await withEnvironment(ekoEnv, async () => {
+      await assert.rejects(
+        () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+        /Eko verification failed.*No verified vehicle details were returned/i
+      );
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('rejects Eko staging URLs in Production', async () => {
+  await withEnvironment({
+    ...ekoEnv,
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+    APP_MODE: 'production',
+  }, async () => {
+    await assert.rejects(
+      () => fetchVehicleRecord({ registrationNumber: 'MH12AB1234' }),
+      /invalid for this environment/i
+    );
+  });
 });

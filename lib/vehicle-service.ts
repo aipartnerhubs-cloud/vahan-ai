@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 export type VehicleLookupInput = {
   registrationNumber: string;
@@ -143,7 +143,7 @@ async function fetchEkoVehicleRecord(registrationNumber: string): Promise<Vehicl
     throw new Error('Eko provider URL is invalid for this environment.');
   }
 
-  const endpoint = parsedUrl.toString().replace(/\\/+$/, '') + '/tools/kyc/vehicle-rc';
+  const endpoint = parsedUrl.toString().replace(/\/+$/, '') + '/tools/kyc/vehicle-rc';
   const timestamp = Date.now().toString();
   // Eko requires the base64-encoded access key string itself as the HMAC key.
   const encodedAccessKey = Buffer.from(accessKey, 'utf8').toString('base64');

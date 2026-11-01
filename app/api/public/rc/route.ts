@@ -172,12 +172,11 @@ export async function POST(request: Request) {
     if (/invalid registration number/i.test(message)) {
       return respond({ error: 'Registration number format is invalid.',  }, 400);
     }
-    if (/surepass verification failed/i.test(message)) {
+    if (/(surepass|eko) verification failed/i.test(message)) {
       return respond({
-        error: 'Surepass could not verify this registration number in Sandbox. No vehicle details were returned. Confirm a supported test registration number and Sandbox access with Surepass.',
-        code: 'SUREPASS_VERIFICATION_FAILED',
-        
-    }, 422);
+        error: 'The selected vehicle provider could not verify this registration number. No vehicle details were returned. Confirm a supported test registration number and active provider access.',
+        code: 'PROVIDER_VERIFICATION_FAILED',
+      }, 422);
     }
     if (/not configured|credentials|production mode|sandbox|provider url/i.test(message)) {
       return respond({ error: 'Vehicle verification is not configured for this environment.',  }, 503);

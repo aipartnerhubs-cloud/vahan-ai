@@ -1,14 +1,14 @@
 # Vahan AI — secure RC-first verification with public partner access
 
-Vahan AI is a Next.js application with two separated experiences: a secured administrator/agent workspace and a no-login public partner lookup at `/partner`. Both use the same server-only Surepass RC V2 adapter. The public partner page returns only an allowlisted set of non-owner vehicle fields; owner name and other personal details remain unavailable on that public path. Provider credentials stay on the server.
+Vahan AI is a Next.js application with three separated experiences: a secured partner dashboard at `/dashboard`, an authenticated RC lookup workspace at `/`, and a no-login public partner lookup at `/partner`. The public partner page returns only an allowlisted set of non-owner vehicle fields; owner name and other personal details remain unavailable on that public path. Provider credentials stay on the server.
 
 ## Included in this rebuild
 
-- Mobile-responsive admin and public partner web apps with English, Hindi and Marathi labels.
+- Mobile-responsive partner dashboard shell, authenticated RC lookup and public partner page. The dashboard shows available and planned modules without pretending unconnected services are live.
 - WhatsApp share action that opens a pre-filled partner invitation message; the sender chooses the contact and confirms sending.
 - Installable partner PWA with an Add to Home Screen flow and no-cache service worker (vehicle/API data is never cached).
 - No-login partner route at `/partner`, separate from the secured admin route.
-- Public RC API requires explicit lawful-purpose confirmation, Upstash limits of 3 checks per 5 minutes and 5 checks per India calendar day per public IP/network, and fails closed when the limiter is unavailable. The daily quota resets at 12:00 AM IST.
+- Public RC API requires explicit lawful-purpose confirmation and an Upstash limit of 5 lookup attempts per public IP/network per India calendar day. The quota resets at 12:00 AM IST and the API fails closed when the limiter is unavailable.
 - Public responses exclude owner name, address, mobile, chassis, engine and verification score.
 - Registration-first lookup with optional chassis/engine cross-check inputs.
 - Browser voice input for the registration number where Web Speech API is supported.
@@ -110,7 +110,7 @@ The public route displays only the allowlisted fields returned by the provider, 
 - [ ] WhatsApp share opens with the correct `/partner` URL.
 - [ ] Android Add to Home Screen and iPhone Safari Add to Home Screen are tested.
 - [ ] Public API returns only allowlisted non-owner vehicle fields.
-- [ ] Public IP limit is 3 per 5 minutes and 5 per India calendar day; midnight IST reset and fail-closed behavior are verified.
+- [ ] Public IP limit is 5 lookup attempts per India calendar day; midnight IST reset and fail-closed behavior are verified.
 - [ ] Explain to pilot partners that one shared Wi-Fi/network shares the same free quota.
 
 ## Production checklist

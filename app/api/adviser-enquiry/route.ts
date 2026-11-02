@@ -11,6 +11,8 @@ export async function POST(request: Request) {
     const email = typeof body.email === "string" ? body.email.trim() : "";
     const consent = body.consent === true;
     const documents = Array.isArray(body.documents) ? body.documents : [];
+    const education = typeof body.education === "string" ? body.education.trim() : "";
+    const hasRequiredDocs = ["photo", "pan", "tenth", "address", "bank"].every((type) => documents.some((item: any) => item.type === type && Array.isArray(item.files) && item.files.length > 0));
 
     if (!fullName || !/^[6-9]\d{9}$/.test(mobile) || !city || !consent) {
       return NextResponse.json({ error: "Please provide valid name, 10-digit mobile, city and consent." }, { status: 400 });
@@ -33,7 +35,7 @@ export async function POST(request: Request) {
       "New VAHAN AI / PBPartners adviser enquiry",
       `Name: ${fullName}`,
       `Mobile: ${mobile}`,
-      `Email: ${email || "Not provided"}`,
+      `Email: ${email}`,\n      `Minimum education: ${education}`,
       `City: ${city}`,
       `State: ${String(body.state || "").slice(0, 80)}`,
       `Experience: ${String(body.experience || "").slice(0, 100)}`,

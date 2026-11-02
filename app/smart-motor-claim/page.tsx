@@ -22,7 +22,8 @@ const requiredDocs: { key: DocKey; title: string; hint: string; required: boolea
 ];
 
 export default function SmartMotorClaimPage() {
-  const [files, setFiles] = useState<Partial<Record<DocKey, File[]>>>({});\n  const [kycFiles, setKycFiles] = useState<Record<string, File[]>>({});
+  const [files, setFiles] = useState<Partial<Record<DocKey, File[]>>>({});
+  const [kycFiles, setKycFiles] = useState<Record<string, File[]>>({});
   const [registration, setRegistration] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [insurer, setInsurer] = useState("");

@@ -52,7 +52,7 @@ const copy = {
     shareText: 'Open Vahan AI Partner Vehicle Lookup:',
     footer: 'Vahan AI · Partner access',
     privacy: 'Public access is rate-limited. No owner personal details are displayed.',
-    freeLimit: 'Preview testing: the 5-check daily quota is disabled. A short-window guard of 3 checks per 5 minutes remains.',
+    freeLimit: 'Free Beta: maximum 5 checks per network per day. Resets at midnight IST.',
     consentRequired: 'Please confirm that you are authorized to request this lookup.',
   },
   hi: {
@@ -116,7 +116,7 @@ const copy = {
     shareText: 'Vahan AI Partner Vehicle Lookup उघडा:',
     footer: 'Vahan AI · पार्टनर प्रवेश',
     privacy: 'सार्वजनिक lookup वर मर्यादा आहेत. मालकाची वैयक्तिक माहिती दाखवली जात नाही.',
-    freeLimit: 'Preview testing: दररोजच्या 5 तपासण्यांची मर्यादा काढली आहे. गैरवापर टाळण्यासाठी 5 मिनिटांत 3 तपासण्यांची मर्यादा लागू आहे.',
+    freeLimit: 'मुफ्त बीटा: एका नेटवर्कवरून दररोज जास्तीत जास्त 5 तपासण्या. दररोज मध्यरात्री IST ला मर्यादा रीसेट होईल.',
     consentRequired: 'कृपया तुम्ही या lookup साठी अधिकृत असल्याची पुष्टी करा.',
   },
 } as const;

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getPublicRateLimiters } from '@/lib/rate-limit';
+import { getIndiaDailyQuotaWindow, PUBLIC_PARTNER_DAILY_LIMIT } from '@/lib/public-usage-policy';
 import { fetchVehicleRecord } from '@/lib/vehicle-service';
 import { toPublicVehicleResult } from '@/lib/public-vehicle';
 
@@ -119,42 +120,39 @@ export async function POST(request: Request) {
   }
 
   const clientKey = createHash('sha256').update(ip).digest('hex');
+  const quotaWindow = getIndiaDailyQuotaWindow();
+  const dailyKey = `vahan-ai:rc:public:ip:daily:${quotaWindow.day}:${clientKey}`;
 
   try {
-    // Preview testing keeps a short-window burst guard but disables the
-    // five-lookups-per-day quota.
-    const burst = await limiters.burst.limit(clientKey);
-    if (!burst.success) {
-      const retryAfter = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
+    // Each lookup attempt counts toward the free daily allowance.
+    // INCR is atomic, so concurrent requests cannot bypass the quota.
+    const used = await limiters.redis.incr(dailyKey);
+    if (used === 1) {
+      await limiters.redis.expire(dailyKey, quotaWindow.ttlSeconds);
+    }
+
+    if (used > PUBLIC_PARTNER_DAILY_LIMIT) {
+      const retryAfter = quotaWindow.ttlSeconds;
+      const resetsAt = new Date(Date.now() + retryAfter * 1000).toISOString();
       return respond(
-        { error: 'Please wait before another lookup. The short-window limit is 3 checks in 5 minutes.', code: 'BURST_LIMIT_REACHED', limitType: 'burst' },
+        {
+          error: `Daily free limit reached. Maximum ${PUBLIC_PARTNER_DAILY_LIMIT} RC checks per network per day. Resets at midnight IST.`,
+          code: 'DAILY_LIMIT_REACHED',
+          limit: PUBLIC_PARTNER_DAILY_LIMIT,
+          resetsAt,
+        },
         429,
         { 'Retry-After': String(retryAfter) }
       );
     }
   } catch (error) {
-    const failure = error && typeof error === 'object' ? error as {
-      name?: unknown; message?: unknown; status?: unknown; statusCode?: unknown; code?: unknown;
-      response?: { status?: unknown };
-    } : {};
-    const safeCode = typeof failure.code === 'string' && /^[A-Z0-9_-]{1,48}$/i.test(failure.code) ? failure.code : undefined;
-    const responseStatus = failure.response?.status;
-    const safeStatus = Number.isInteger(failure.status) ? failure.status
-      : Number.isInteger(failure.statusCode) ? failure.statusCode
-      : Number.isInteger(responseStatus) ? responseStatus : undefined;
-    const safeMessage = typeof failure.message === 'string'
-      ? failure.message
-          .replace(/https?:\/\/\S+/gi, '[endpoint]')
-          .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
-          .slice(0, 160)
-      : undefined;
-    console.error('Public RC burst-limit provider unavailable.', {
-      errorName: typeof failure.name === 'string' ? failure.name : 'UnknownError',
-      status: safeStatus,
-      code: safeCode,
-      message: safeMessage,
+    console.error('Public RC daily quota provider unavailable.', {
+      errorName: error instanceof Error ? error.name : 'UnknownError',
     });
-    return respond({ error: 'Vehicle lookup is temporarily unavailable because usage protection could not be verified.' }, 503);
+    return respond(
+      { error: 'Vehicle lookup is temporarily unavailable because daily usage protection could not be verified.' },
+      503
+    );
   }
 
   try {

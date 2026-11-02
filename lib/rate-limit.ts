@@ -1,6 +1,5 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
-import { PUBLIC_PARTNER_BURST_LIMIT, PUBLIC_PARTNER_BURST_WINDOW } from '@/lib/public-usage-policy';
 
 type Limiters = {
   tenMinutes: Ratelimit;
@@ -42,27 +41,20 @@ export function getRateLimiters(): Limiters | null {
 
 
 type PublicLimiters = {
-  burst: Ratelimit;
+  redis: Redis;
 };
 
 let cachedPublicLimiters: PublicLimiters | null = null;
 
 /**
- * No-login partner lookups keep a short-window burst guard by server-derived client IP.
- * The daily quota is disabled on this Preview testing branch.
+ * No-login partner lookups use an atomic Redis counter keyed by a hashed
+ * network address and the current India calendar date.
  */
 export function getPublicRateLimiters(): PublicLimiters | null {
   if (!isRateLimitConfigured()) return null;
 
   if (!cachedPublicLimiters) {
-    const redis = Redis.fromEnv();
-    cachedPublicLimiters = {
-      burst: new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(PUBLIC_PARTNER_BURST_LIMIT, PUBLIC_PARTNER_BURST_WINDOW),
-        prefix: 'vahan-ai:rc:public:ip:5m',
-      }),
-    };
+    cachedPublicLimiters = { redis: Redis.fromEnv() };
   }
 
   return cachedPublicLimiters;

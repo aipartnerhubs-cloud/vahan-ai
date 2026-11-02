@@ -14,7 +14,7 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#080d1b",
     categories: ["utilities", "business"],
     icons: [
-      { src: "/icons/vahan-ai.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }
+      { src: "/icons/vahan-ai.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }
     ]
   };
 }

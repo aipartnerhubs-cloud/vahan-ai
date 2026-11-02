@@ -1,9 +1,9 @@
 # Vahan AI — Product Blueprint
 
 ## Product direction
-Build Vahan AI as a mobile-first vehicle intelligence and insurance operations application for authorized insurance partners. The no-login public partner lookup remains a separate, deliberately limited entry point. The secured Partner Workspace is the full application.
+Build Vahan AI as an independent, mobile-first Vehicle Intelligence application for authorized insurance partners and permitted customer use. It may offer a cleaner, faster experience for vehicle information, but it must not describe itself as a Government of India/NIC replacement or imply affiliation with NextGen mParivahan. Keep the no-login public partner lookup separate and deliberately limited; the secured Partner Workspace is the full application.
 
-This blueprint is a product plan, not a claim that every listed service is already live.
+Positioning: **Vahan AI — Advanced Vehicle Intelligence & Partner Services**. Use Vahan AI branding, not the mParivahan name or government marks. This blueprint is a product plan, not a claim that every listed service is already live.
 
 ## Access tiers
 1. **Public partner lookup** — no account, basic provider-returned vehicle fields only, explicit lawful-purpose confirmation, five attempts per IP/network per India calendar day in the beta. This is not identity-verified per-person access.
@@ -14,8 +14,12 @@ This blueprint is a product plan, not a claim that every listed service is alrea
 - Overview
 - Vehicle RC lookup
 - RC search history
-- Insurance details
-- Challan status
+- Owner and address details (permission-gated)
+- Vehicle owner history (permission-gated)
+- Fitness, PUC and permit status
+- Challan and blacklist status
+- Previous policy details
+- Vehicle claim history (permission-gated)
 - Insurance renewal workspace
 - PDF reports
 - Wallet and transactions
@@ -34,23 +38,29 @@ Only connected modules should be enabled. The dashboard may show planned modules
 - Registration date, RTO, fitness and PUC validity, where supplied
 - Insurance insurer and validity fields, only where returned by the contracted source
 - Financier/hypothecation, permit and tax information, only where available and authorized
-- Owner identity/address fields in a separately permissioned section only when the provider agreement, lawful purpose and consent/authorization allow it
+- Owner name, father/spouse relation if provided, ownership serial number, owner count, present/permanent address, mobile number and ownership history only in a separately permissioned authenticated report when the provider contract, NTR/MoRTH approval (where required), lawful purpose and customer authorization allow it. Keep these fields off the anonymous public lookup.
 - Source, provider reference, lookup timestamp, data freshness and missing-field notices
 
 Never guess missing values or convert an insurer/expiry field into a claim about full policy coverage. RC information alone does not provide complete policy wording, IDV, premium, add-ons or claim status.
 
-## Insurance workflow
-1. Start from the RC record.
-2. Confirm customer/vehicle match and record the customer authorization.
-3. Upload an existing policy or retrieve permitted insurer data through an authorized integration.
-4. Extract policy number, insurer, dates, IDV, coverage, add-ons and NCB only from the actual policy/source.
-5. Prepare quotes through authorized insurer/broking integrations.
-6. Present payment links and renewal reminders only after the quote/transaction provider is configured.
-7. Keep the issued policy document and transaction status in the customer's permitted record.
+## Previous policy and claims — intentionally focused scope
+Vahan AI's insurance screen should stay focused on the **previous/current policy record** and **claim history**. Do not expand it into a large quote/coverage comparison screen in this product phase.
+
+### Previous policy details
+- Insurer name, policy number, policy start/end or validity dates, policy type (TP / package / standalone OD), and policy status when verified.
+- Store the uploaded policy schedule/renewal notice as the primary supporting document; extract IDV, NCB, add-ons or coverage wording only when they are explicitly present on that document or returned by the authorized insurer API.
+- RC/NTR and common RC APIs may return insurer name, policy number and validity, but that does not prove the full policy wording, IDV, add-ons, NCB or claims record.
+
+### Vehicle claim history
+The claim screen may show claim number, insurer, claim/intimation date, date of loss, claim type/cause, status (intimated / under survey / approved / rejected / settled), estimated/approved/paid amount, surveyor/garage where supplied, settlement/repudiation date and reason, and NCB impact where verified. Each entry must show source and last-updated date.
+
+**Important source limitation:** MoRTH's NTR shareable vehicle data lists insurance validity, insurer company name and policy number, but not a general vehicle-claims-history dataset. The Insurance Information Bureau (IIB) has insurer-facing motor policy/claims-history tools (including SUDARSHANA/VCHVS); any integration for Vahan AI must be confirmed with IIB/insurer and approved for this application and business role. Do not assume a public unrestricted claims API exists. Until such access is approved, accept a customer-provided claim statement/settlement letter or retrieve claims through that customer's insurer with documented authorization. Do not label an empty search as "No claims" unless an authorized source explicitly confirms that result.
+
+IRDAI's 2025 information-maintenance regulations require insurers to keep detailed records of claims intimated and prescribe claims records that insurance intermediaries maintain when they serviced/processed the claim. This supports keeping a Vahan AI claim record for cases our authorized intermediary workflow actually handled; it does not grant access to every insurer's entire historical database.
 
 ## PDF export
-- Vahan AI branded report and report ID
-- Field-level source and "not supplied" labels
+- Vahan AI branded RC/owner/policy/claims report and report ID
+- Field-level source and "not supplied" labels; show whether claim data is provider-verified or customer-document-derived
 - Generated date/time and lawful-purpose/consent reference where applicable
 - Default redaction for personal identifiers; elevated export permission for any approved PII
 - Secure, expiring share links; do not expose personal reports through public static URLs
@@ -78,7 +88,9 @@ Potential provider evaluation: Surepass, HyperVerge, IDfy and Eko. Compare sandb
 - Admin and provider actions written to immutable audit logs.
 - CERT-In empanelled security audit and required authority/provider approvals before production access to protected transport data.
 
-MoRTH's 18 August 2025 National Transport Repository policy describes approval, purpose-specific data access, security audit, IP whitelisting and PII masking controls. Full personal data should not be assumed available merely because a commercial app advertises it.
+MoRTH's 18 August 2025 National Transport Repository policy lists vehicle-owner datasets (including name, address, mobile and owner history) but says PII is masked for API recipients except specifically approved full-access entities. Private-sector access is subject to MoRTH approval and customer consent; the policy also calls for CERT-In-empanelled security audit, IP whitelisting, application-specific credentials, access logs and annual renewal. Full personal data must therefore remain locked until the exact data access and use are approved.
+
+The same policy lists the shareable insurance fields as validity, company name and policy number. It does not list claims history as a standard NTR vehicle field. For claims, evaluate IIB's insurer-facing SUDARSHANA/VCHVS service or an insurer's authorized claims API instead.
 
 ## Delivery phases
 ### Phase 0 — foundation
@@ -87,22 +99,21 @@ MoRTH's 18 August 2025 National Transport Repository policy describes approval, 
 - Provider adapter, normalized RC output and reliable error handling.
 - Daily quota, audit logs, health checks and CI/build gates.
 
-### Phase 1 — usable partner MVP
+### Phase 1 — usable vehicle intelligence MVP
 - Dashboard and responsive sidebar/mobile navigation.
-- RC lookup and search history.
-- Field-level RC report.
+- RC lookup, search history, fitness/PUC/permit and challan modules as provider coverage permits.
+- RC report and source-labelled report history.
 - Branded PDF with personal data redacted by default.
 - Partner profile, support and basic usage ledger.
 
-### Phase 2 — insurance operations
-- Policy upload/OCR and policy detail report.
-- Insurance renewals and expiry reminders.
-- Authorized insurer quote, payment and policy-issuance integrations.
-- Partner wallet, recharge, invoices and refunds.
+### Phase 2 — owner and previous-policy data
+- Owner details, address and owner history only after the data recipient has the required source-specific access and customer authorization.
+- Previous policy summary from approved source fields, policy upload/OCR and secure PDF document storage.
 
-### Phase 3 — verification suite
-- Challan, DL, PAN, address and IRDAI checks only after individual provider onboarding and permission review.
-- Owner history only where legally permitted.
+### Phase 3 — claim history and verification suite
+- Evaluate IIB SUDARSHANA/VCHVS or an insurer-authorized claims API; obtain written eligibility, API/portal terms, allowed display fields and purpose approval before implementation.
+- Until approval, allow the customer/agent to upload claim intimation, survey, approval, repudiation or settlement documents and show them as document-derived, not as an industry-wide claim search.
+- DL, PAN, address and IRDAI checks only after individual provider onboarding and permission review.
 - RM/admin console and configurable partner plans.
 
 ### Phase 4 — Play Store release

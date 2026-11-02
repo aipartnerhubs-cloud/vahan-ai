@@ -37,7 +37,7 @@ export default function AdviserEnquiryPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Enquiry notification service is not configured yet.");
       setNotice("आपकी enquiry receive हो गई है। हमारी टीम आपसे संपर्क करेगी।");
-      setForm({ fullName: "", mobile: "", email: "", city: "", state: "Maharashtra", experience: "New to insurance", interest: "Motor insurance", message: "" });
+      setForm({ fullName: "", mobile: "", email: "", city: "", state: "Maharashtra", education: "10th pass", experience: "New to insurance", interest: "Motor insurance", message: "" });
       setFiles({});
       setConsent(false);
     } catch (error) {

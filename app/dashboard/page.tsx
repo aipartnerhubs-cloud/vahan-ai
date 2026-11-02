@@ -17,23 +17,26 @@ type ModuleItem = {
 
 const modules: ModuleItem[] = [
   { title: 'Vehicle details by RC', description: 'Registration-first lookup with verified provider fields.', icon: '🚘', status: 'Available', href: '/', group: 'Vehicle' },
+  { title: 'Owner & address details', description: 'Full registered-owner fields only where the provider and lawful access approval permit them.', icon: '👤', status: 'Restricted', group: 'Vehicle' },
+  { title: 'Vehicle owner history', description: 'Previous ownership sequence when returned by an approved source and permitted for this purpose.', icon: '🔁', status: 'Restricted', group: 'Vehicle' },
   { title: 'RC search history', description: 'Search records, timestamps and permitted report history.', icon: '🕘', status: 'In development', group: 'Vehicle' },
-  { title: 'Insurance details', description: 'Policy insurer and validity data when supplied by an authorized source.', icon: '🛡️', status: 'In development', group: 'Insurance' },
-  { title: 'Challan status', description: 'Pending and paid e-challan information through an approved provider.', icon: '🧾', status: 'In development', group: 'Vehicle' },
-  { title: 'PDF reports', description: 'Branded, permission-aware vehicle reports for download and sharing.', icon: '📄', status: 'In development', group: 'Workspace' },
-  { title: 'Insurance renewal', description: 'Expiry reminders, quote preparation and partner follow-up.', icon: '📅', status: 'In development', group: 'Insurance' },
+  { title: 'Fitness, PUC & permits', description: 'Validity, permit and compliance records where supplied by the connected source.', icon: '📋', status: 'In development', group: 'Vehicle' },
+  { title: 'Challan & blacklist status', description: 'Traffic challans and vehicle status through approved data sources.', icon: '🧾', status: 'In development', group: 'Vehicle' },
+  { title: 'Previous policy details', description: 'Previous insurer, policy number and validity; fuller policy fields from the policy schedule or insurer.', icon: '🛡️', status: 'In development', group: 'Insurance' },
+  { title: 'Vehicle claim history', description: 'Claim dates, type, status and settlement details only through an authorized IIB/insurer source or customer-provided documents.', icon: '📑', status: 'Restricted', group: 'Insurance' },
+  { title: 'PDF reports', description: 'Branded reports with source labels, privacy controls and secure sharing.', icon: '📄', status: 'In development', group: 'Workspace' },
   { title: 'Driving licence verification', description: 'Consent-based DL validation through an approved data source.', icon: '🪪', status: 'In development', group: 'Verification' },
   { title: 'PAN verification', description: 'Identity verification only through an authorized provider and permitted purpose.', icon: '🔎', status: 'Restricted', group: 'Verification' },
   { title: 'Address verification', description: 'Customer-authorized address verification with an auditable consent record.', icon: '📍', status: 'Restricted', group: 'Verification' },
   { title: 'IRDAI agent verification', description: 'Check agent credentials using an approved verification source.', icon: '👨‍💼', status: 'In development', group: 'Verification' },
   { title: 'Wallet & transactions', description: 'Usage ledger, available credits, recharges and invoices.', icon: '💳', status: 'In development', group: 'Workspace' },
   { title: 'Partner support', description: 'Help requests, provider issues and service status.', icon: '🎧', status: 'In development', group: 'Workspace' },
-];
+];;
 
 const navGroups = [
   { label: 'WORKSPACE', items: [{ title: 'Overview', icon: '⌂', href: '/dashboard' }, { title: 'Public partner lookup', icon: '↗', href: '/partner' }] },
-  { label: 'VEHICLE SERVICES', items: [{ title: 'Vehicle RC lookup', icon: '🚘', href: '/' }, { title: 'RC search history', icon: '◷' }, { title: 'Challan status', icon: '▤' }] },
-  { label: 'INSURANCE', items: [{ title: 'Insurance details', icon: '▣' }, { title: 'Renewal workspace', icon: '◷' }, { title: 'PDF reports', icon: '▧' }] },
+  { label: 'VEHICLE SERVICES', items: [{ title: 'Vehicle RC lookup', icon: '🚘', href: '/' }, { title: 'Owner & address details', icon: '♙' }, { title: 'Vehicle owner history', icon: '↻' }, { title: 'RC search history', icon: '◷' }, { title: 'Fitness, PUC & permits', icon: '▤' }, { title: 'Challan & blacklist', icon: '▤' }] },
+  { label: 'INSURANCE', items: [{ title: 'Previous policy details', icon: '▣' }, { title: 'Vehicle claim history', icon: '▤' }, { title: 'PDF reports', icon: '▧' }] },
   { label: 'VERIFICATION', items: [{ title: 'Driving licence', icon: '▣' }, { title: 'PAN verification', icon: '⌕' }, { title: 'Address verification', icon: '⌖' }, { title: 'IRDAI agent check', icon: '✓' }] },
   { label: 'ACCOUNT', items: [{ title: 'Wallet & transactions', icon: '₹' }, { title: 'Support', icon: '?' }] },
 ];

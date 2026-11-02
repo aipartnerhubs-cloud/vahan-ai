@@ -161,7 +161,7 @@ export default function HomePage() {
           <a className="nav-active" href="#home">Home</a>
           <a href="#features">Explore</a>
           <a href="#vehicle-result">Vehicle report</a>
-          <a href="#claim-support">Claim support</a>
+          <a href="#claim-support">Claim support</a>\n          <a href="/smart-motor-claim">Smart Motor Claim</a>
         </nav>
         <div className="top-actions">
           <label className="language-select" aria-label="Voice language">
@@ -217,7 +217,7 @@ export default function HomePage() {
         {featureNotice && <div className="feature-notice"><span>✦</span><p>{featureNotice}</p><button onClick={() => setFeatureNotice("")} aria-label="Close feature note">×</button></div>}
       </section>
 
-      <section className="claim-band" id="claim-support"><div className="claim-icon">◇</div><div><span className="section-kicker">CLAIM SUPPORT & HISTORY</span><h2>Every claim deserves clarity.</h2><p>Keep claim references, documents and status updates organised. Historical claim data appears only when supplied by an authorised source or verified documents.</p></div><a href="#features" className="claim-link">Explore claim features <span>↗</span></a></section>
+      <section className="claim-band" id="claim-support"><div className="claim-icon">◇</div><div><span className="section-kicker">CLAIM SUPPORT & HISTORY</span><h2>Every claim deserves clarity.</h2><p>Keep claim references, documents and status updates organised. Historical claim data appears only when supplied by an authorised source or verified documents.</p></div><a href="/smart-motor-claim" className="claim-link">Open Smart Motor Claim <span>↗</span></a></section>
 
       <section className="voice-band"><div className="voice-orb">◉</div><div><span className="section-kicker">MEET YOUR VOICE COMPANION</span><h2>Say it. Search it. Understand it.</h2><p>Voice input is available in supported browsers. Choose Hindi, Marathi or English above and tap the microphone.</p></div><button onClick={startVoiceSearch} className="voice-cta">🎙 Try voice search</button></section>
 

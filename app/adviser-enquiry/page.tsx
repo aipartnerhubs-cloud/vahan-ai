@@ -13,7 +13,7 @@ const documentTypes = [
 ];
 
 export default function AdviserEnquiryPage() {
-  const [form, setForm] = useState({ fullName: "", mobile: "", email: "", city: "", state: "Maharashtra", education: "10th pass", education: "10th pass", experience: "New to insurance", interest: "Motor insurance", message: "" });
+  const [form, setForm] = useState({ fullName: "", mobile: "", email: "", city: "", state: "Maharashtra", education: "10th pass", experience: "New to insurance", interest: "Motor insurance", message: "" });
   const [files, setFiles] = useState<Record<string, File[]>>({});
   const [consent, setConsent] = useState(false);
   const [notice, setNotice] = useState("");

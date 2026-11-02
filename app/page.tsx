@@ -70,6 +70,7 @@ export default function HomePage() {
   const [language, setLanguage] = useState("en-IN");
   const [listening, setListening] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [freeChecksRemaining, setFreeChecksRemaining] = useState(3);
   const [error, setError] = useState("");
   const [vehicle, setVehicle] = useState<VehicleResult | null>(null);
   const [activeFeature, setActiveFeature] = useState("RC Details");
@@ -127,8 +128,9 @@ export default function HomePage() {
         body: JSON.stringify({ registrationNumber: cleaned }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || "Vehicle verification could not be completed.");
+      if (!response.ok) { if (response.status === 429) setFreeChecksRemaining(0); throw new Error(payload?.error || "Vehicle verification could not be completed."); }
       setVehicle(payload.result as VehicleResult);
+      if (typeof payload.freeChecksRemaining === "number") setFreeChecksRemaining(payload.freeChecksRemaining);
       setActiveFeature("RC Details");
       document.getElementById("vehicle-result")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (err) {
@@ -203,8 +205,8 @@ export default function HomePage() {
       <section className="search-panel" aria-label="Vehicle search">
         <div className="search-intro"><span className="section-kicker">START WITH A NUMBER</span><h2>Let&apos;s find your vehicle.</h2><p>Enter a registration number or use your voice to begin.</p></div>
         <form className="vehicle-search" onSubmit={searchVehicle}>
-          <div className="search-input-wrap"><span className="india-badge">IND</span><input value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value.toUpperCase())} placeholder="Enter registration number" aria-label="Vehicle registration number" maxLength={20} /><button type="button" className={listening ? "voice-button listening" : "voice-button"} onClick={listening ? () => recognitionRef.current?.stop() : startVoiceSearch} aria-label={listening ? "Stop voice search" : "Start voice search"}>{listening ? "■" : "🎙"}</button><button className="search-button" type="submit" disabled={loading}>{loading ? <span className="spinner" /> : "⌕"}<span>{loading ? "Checking" : "Search vehicle"}</span></button></div>
-          <div className="search-foot"><span>⌁ Secure lookup through connected authorised sources</span><span className={listening ? "listening-label" : ""}>{listening ? "Listening… speak now" : "Voice: Hindi • Marathi • English"}</span></div>
+          <div className="search-input-wrap"><span className="india-badge">IND</span><input value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value.toUpperCase())} placeholder="Enter registration number" aria-label="Vehicle registration number" maxLength={20} /><button type="button" className={listening ? "voice-button listening" : "voice-button"} onClick={listening ? () => recognitionRef.current?.stop() : startVoiceSearch} aria-label={listening ? "Stop voice search" : "Start voice search"}>{listening ? "■" : "🎙"}</button><button className="search-button" type="submit" disabled={loading || freeChecksRemaining <= 0}>{loading ? <span className="spinner" /> : "⌕"}<span>{loading ? "Checking" : "Search vehicle"}</span></button></div>
+          <div className="search-foot"><span>⌁ Secure lookup through connected authorised sources</span><span className={listening ? "listening-label" : ""}>{listening ? "Listening… speak now" : "Voice: Hindi • Marathi • English"}</span></div><div className="free-check-note"><span>Free guest access</span><strong>{freeChecksRemaining} of 3 RC checks remaining today</strong><small>No login required • Limit is per internet connection and resets after 24 hours</small></div>
         </form>
         {error && <div className="error-message" role="alert">{error}</div>}
       </section>

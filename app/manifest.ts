@@ -14,7 +14,8 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: '#0f2742',
     categories: ['business', 'utilities'],
     icons: [
-      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }
+      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' }
     ],
     shortcuts: [
       { name: 'Verify vehicle', short_name: 'Verify RC', url: '/' }

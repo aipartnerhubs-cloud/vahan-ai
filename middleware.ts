@@ -69,7 +69,7 @@ export async function middleware(request: NextRequest) {
 
   if (isLogin && allowed) {
     const homeUrl = request.nextUrl.clone();
-    homeUrl.pathname = '/';
+    homeUrl.pathname = '/dashboard';
     homeUrl.search = '';
     return withSecurityHeaders(NextResponse.redirect(homeUrl), request);
   }

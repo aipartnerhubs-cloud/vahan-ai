@@ -5,6 +5,7 @@ import { useState } from "react";
 const documentTypes = [
   { id: "photo", label: "Recent passport-size photograph", required: true, note: "Clear face photo" },
   { id: "pan", label: "PAN card", required: true, note: "For identity and onboarding checks" },
+  { id: "tenth", label: "10th class pass certificate / marksheet", required: true, note: "Minimum education proof; upload a clear certificate or marksheet" },
   { id: "address", label: "Address / identity proof", required: true, note: "Masked Aadhaar where accepted, or another accepted proof" },
   { id: "bank", label: "Bank proof / cancelled cheque", required: true, note: "Name and account details should be readable" },
   { id: "licence", label: "Existing IRDAI / insurance qualification", required: false, note: "If already licensed or qualified" },
@@ -12,7 +13,7 @@ const documentTypes = [
 ];
 
 export default function AdviserEnquiryPage() {
-  const [form, setForm] = useState({ fullName: "", mobile: "", email: "", city: "", state: "Maharashtra", experience: "New to insurance", interest: "Motor insurance", message: "" });
+  const [form, setForm] = useState({ fullName: "", mobile: "", email: "", city: "", state: "Maharashtra", education: "10th pass", education: "10th pass", experience: "New to insurance", interest: "Motor insurance", message: "" });
   const [files, setFiles] = useState<Record<string, File[]>>({});
   const [consent, setConsent] = useState(false);
   const [notice, setNotice] = useState("");
@@ -47,16 +48,17 @@ export default function AdviserEnquiryPage() {
   return (
     <main className="adviser-app">
       <header className="adviser-top"><a href="/" className="adviser-brand">✦ VAHAN <b>AI</b></a><nav><a href="/">Home</a><a href="/smart-motor-claim">Smart Motor Claim</a></nav></header>
-      <section className="adviser-hero"><span className="adviser-kicker">SMART INSURANCE • PBPARTNERS</span><h1>Start your journey as an <em>Insurance Adviser.</em></h1><p>Interested in joining the PBPartners network? Submit your details and required documents for an onboarding enquiry.</p><div className="adviser-pills"><span>Partner opportunity</span><span>Guided onboarding</span><span>Mobile-first enquiry</span></div></section>
+      <section className="adviser-hero"><span className="adviser-kicker">SMART INSURANCE • PBPARTNERS</span><h1>Start your journey as an <em>Insurance Adviser.</em></h1><p>Interested in joining the PBPartners network? Submit your details and required documents, including minimum 10th class education proof, for an onboarding enquiry.</p><div className="adviser-pills"><span>Partner opportunity</span><span>Guided onboarding</span><span>Mobile-first enquiry</span></div></section>
       <section className="adviser-info"><b>How it works</b><p>Share your contact details → our team reviews your enquiry → we contact you about eligibility, documentation and the official onboarding process. Submitting this form is an enquiry only; it does not grant an insurance licence or appointment.</p></section>
       <form className="adviser-form" onSubmit={submit}>
-        <div className="adviser-heading"><div><span className="adviser-kicker">STEP 01</span><h2>Your contact details</h2><p>Mobile number is required so our team can contact you.</p></div><span className="adviser-step">PARTNER ENQUIRY</span></div>
+        <div className="adviser-heading"><div><span className="adviser-kicker">STEP 01</span><h2>Your contact details</h2><p>Mobile number and email address are required so our team can contact you.</p></div><span className="adviser-step">PARTNER ENQUIRY</span></div>
         <div className="adviser-fields">
           <label>Full name *<input required value={form.fullName} onChange={e=>update("fullName",e.target.value)} placeholder="As per identity proof" /></label>
           <label>Mobile number *<input required inputMode="numeric" maxLength={10} value={form.mobile} onChange={e=>update("mobile",e.target.value.replace(/\D/g,"").slice(0,10))} placeholder="10-digit mobile number" /></label>
-          <label>Email address<input type="email" value={form.email} onChange={e=>update("email",e.target.value)} placeholder="name@example.com" /></label>
+          <label>Email address *<input required type="email" value={form.email} onChange={e=>update("email",e.target.value)} placeholder="name@example.com" /></label>
           <label>City / district *<input required value={form.city} onChange={e=>update("city",e.target.value)} placeholder="Your city or district" /></label>
           <label>State<input value={form.state} onChange={e=>update("state",e.target.value)} /></label>
+          <label>Minimum education<select required value={form.education} onChange={e=>update("education",e.target.value)}><option>10th pass</option><option>12th pass</option><option>Graduate</option><option>Postgraduate</option></select></label>
           <label>Insurance experience<select value={form.experience} onChange={e=>update("experience",e.target.value)}><option>New to insurance</option><option>Existing insurance adviser</option><option>POSP / agent</option><option>Other financial services experience</option></select></label>
           <label>Interested in<select value={form.interest} onChange={e=>update("interest",e.target.value)}><option>Motor insurance</option><option>Health insurance</option><option>Life / term insurance</option><option>Multiple insurance products</option></select></label>
           <label className="adviser-wide">Additional information<textarea rows={3} value={form.message} onChange={e=>update("message",e.target.value)} placeholder="Tell us about your experience or preferred time to contact you" /></label>

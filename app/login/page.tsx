@@ -51,7 +51,7 @@ export default function LoginPage() {
         setError('Sign-in failed. Check your credentials or contact your administrator.');
         return;
       }
-      router.replace('/');
+      router.replace('/dashboard');
       router.refresh();
     } catch {
       setError('Sign-in is temporarily unavailable. Please try again later.');

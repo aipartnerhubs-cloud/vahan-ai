@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 type DocKey = "policy" | "rc" | "driverDl" | "ownerDl" | "accident" | "police" | "other";
 const requiredDocs: { key: DocKey; title: string; hint: string; required: boolean; accept: string }[] = [

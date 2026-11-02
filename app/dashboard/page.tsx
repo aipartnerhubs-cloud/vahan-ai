@@ -75,7 +75,7 @@ export default function DashboardPage() {
           <span className="va-module-title">{item.title}</span>
           <span className="va-module-description">{item.description}</span>
         </span>
-        <span className={\`va-module-status va-status-\${item.status.toLowerCase().replaceAll(' ', '-')}\`}>{item.status}</span>
+        <span className={`va-module-status va-status-${item.status.toLowerCase().replaceAll(' ', '-')}`}>{item.status}</span>
       </>
     );
     return item.href ? (
@@ -89,8 +89,8 @@ export default function DashboardPage() {
 
   return (
     <main className="va-dashboard">
-      <button className={\`va-sidebar-backdrop \${menuOpen ? 'is-open' : ''}\`} aria-label="Close navigation" onClick={() => setMenuOpen(false)} tabIndex={menuOpen ? 0 : -1} />
-      <aside className={\`va-sidebar \${menuOpen ? 'is-open' : ''}\`}>
+      <button className={`va-sidebar-backdrop ${menuOpen ? 'is-open' : ''}`} aria-label="Close navigation" onClick={() => setMenuOpen(false)} tabIndex={menuOpen ? 0 : -1} />
+      <aside className={`va-sidebar ${menuOpen ? 'is-open' : ''}`}>
         <Link href="/dashboard" className="va-brand" onClick={() => setMenuOpen(false)}>
           <span className="va-brand-mark">V</span>
           <span>Vahan <strong>AI</strong><small>PARTNER WORKSPACE</small></span>

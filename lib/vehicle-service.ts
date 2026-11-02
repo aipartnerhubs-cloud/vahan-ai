@@ -143,7 +143,7 @@ export async function fetchVehicleRecord(input: VehicleRequest): Promise<Vehicle
   }));
 
   if (!isConfigured) {
-    if (process.env.NODE_ENV === 'production') {
+    if ((process.env.NODE_ENV as string) === 'production') {
       throw new VehicleServiceError('RC verification is unavailable because the Surepass API is not configured.', 503, 'RC_API_CONFIG_MISSING');
     }
 

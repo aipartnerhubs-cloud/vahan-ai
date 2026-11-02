@@ -3,6 +3,14 @@
 import { useState } from "react";
 
 type DocKey = "policy" | "rc" | "driverDl" | "ownerDl" | "accident" | "police" | "other";
+const kycDocs = [
+  { key: "pan", title: "PAN Card", hint: "For identity / tax verification when requested.", accept: "image/*,.pdf" },
+  { key: "aadhaar", title: "Masked Aadhaar (preferred)", hint: "Upload only when the insurer's KYC process requires it. Do not upload an unmasked Aadhaar unless specifically required through a lawful, secure process.", accept: "image/*,.pdf" },
+  { key: "identity", title: "Other identity proof", hint: "Passport, Voter ID or another insurer-accepted identity document.", accept: "image/*,.pdf" },
+  { key: "address", title: "Address proof", hint: "Only if requested and not already established by an accepted KYC document.", accept: "image/*,.pdf" },
+  { key: "otherKyc", title: "Additional KYC document", hint: "Any additional document specifically requested by the insurer.", accept: "image/*,.pdf" },
+];
+
 const requiredDocs: { key: DocKey; title: string; hint: string; required: boolean; accept: string }[] = [
   { key: "policy", title: "Active motor insurance policy", hint: "Upload all policy pages, including schedule and add-ons.", required: true, accept: "image/*,.pdf" },
   { key: "rc", title: "Vehicle RC copy", hint: "Front and back, or a clear digital RC PDF.", required: true, accept: "image/*,.pdf" },
@@ -14,7 +22,7 @@ const requiredDocs: { key: DocKey; title: string; hint: string; required: boolea
 ];
 
 export default function SmartMotorClaimPage() {
-  const [files, setFiles] = useState<Partial<Record<DocKey, File[]>>>({});
+  const [files, setFiles] = useState<Partial<Record<DocKey, File[]>>>({});\n  const [kycFiles, setKycFiles] = useState<Record<string, File[]>>({});
   const [registration, setRegistration] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [insurer, setInsurer] = useState("");
@@ -29,7 +37,7 @@ export default function SmartMotorClaimPage() {
   const [listening, setListening] = useState(false);
 
   const requiredComplete = requiredDocs.filter((d) => d.required).every((d) => (files[d.key]?.length ?? 0) > 0);
-  const uploadedCount = Object.values(files).reduce((n, list) => n + (list?.length ?? 0), 0);
+  const uploadedCount = Object.values(files).reduce((n, list) => n + (list?.length ?? 0), 0) + Object.values(kycFiles).reduce((n, list) => n + list.length, 0);
   const canPrepare = requiredComplete && consent && confirmed && registration.trim().length > 0 && incidentDate && description.trim().length > 0;
 
   function addFiles(key: DocKey, list: FileList | null) {
@@ -88,6 +96,19 @@ export default function SmartMotorClaimPage() {
         <div className="claim-ai-note"><b>✦ AI document matching — planned secure processing</b><p>अगले चरण में OCR policy, RC और DL से नाम, registration number, policy validity, vehicle details और licence validity निकालेगा। अंतर मिलने पर Mismatch दिखेगा और AI सही/अतिरिक्त दस्तावेज़ मांगेगा। अभी इस prototype में file selection होती है; वास्तविक OCR या server upload सक्रिय नहीं है।</p></div>
       </section>
 
+      <section className="claim-section" id="kyc-documents">
+        <div className="claim-section-heading"><div><span className="claim-kicker">KYC DOCUMENTS</span><h2>Upload KYC, only when required</h2><p>Insurer की KYC requirement के अनुसार आवश्यक दस्तावेज़ चुनें। सभी KYC documents हर claim में जरूरी नहीं होते।</p></div><span className="claim-step-badge">IDENTITY CHECK</span></div>
+        <div className="claim-doc-grid">
+          {kycDocs.map((doc) => <article className="claim-doc-card" key={doc.key}>
+            <div className="claim-doc-top"><span className="claim-doc-icon">▣</span><span className="claim-optional">As required</span></div>
+            <h3>{doc.title}</h3><p>{doc.hint}</p>
+            <label className="claim-upload"><input type="file" accept={doc.accept} multiple onChange={(e) => { const selected = e.target.files ? Array.from(e.target.files) : []; setKycFiles((old) => ({ ...old, [doc.key]: [...(old[doc.key] ?? []), ...selected] })); }} />＋ Upload KYC file(s)</label>
+            {(kycFiles[doc.key] ?? []).map((file, i) => <div className="claim-file" key={file.name + i}><span>✓ {file.name}</span><button type="button" onClick={() => setKycFiles((old) => ({ ...old, [doc.key]: (old[doc.key] ?? []).filter((_, n) => n !== i) }))}>Remove</button></div>)}
+          </article>)}
+        </div>
+        <div className="claim-ai-note"><b>Privacy and KYC safeguards</b><p>KYC documents are highly sensitive. Upload only what the insurer legally requires. Prefer masked Aadhaar where accepted; never share OTPs, PINs or passwords. This prototype only selects files in your browser; secure encrypted storage, access restrictions, deletion/retention controls and KYC verification must be configured before real uploads are enabled.</p></div>
+      </section>
+
       <section className="claim-section" id="claim-details">
         <div className="claim-section-heading"><div><span className="claim-kicker">STEP 02</span><h2>Tell us what happened</h2><p>अपनी भाषा में लिखें या voice से दुर्घटना का विवरण बताएं।</p></div><span className="claim-step-badge">INCIDENT</span></div>
         <div className="claim-form-grid">
@@ -105,7 +126,7 @@ export default function SmartMotorClaimPage() {
         <div className="claim-section-heading"><div><span className="claim-kicker">STEP 03</span><h2>Review before final form</h2><p>Final claim form से पहले जानकारी की पुष्टि जरूरी है।</p></div><span className="claim-step-badge">REVIEW</span></div>
         <div className="claim-review-list"><p><span>Policy ↔ RC ↔ vehicle number</span><b>OCR match required</b></p><p><span>Policy owner ↔ RC owner</span><b>Identity match required</b></p><p><span>Driver details ↔ DL validity</span><b>Licence check required</b></p><p><span>Accident details ↔ photos / documents</span><b>Customer confirmation required</b></p></div>
         <label className="claim-check"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> मैंने भरी गई दुर्घटना जानकारी और अपलोड किए गए दस्तावेज़ों की समीक्षा की है।</label>
-        <label className="claim-check"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> मैं इस claim assistance प्रक्रिया के लिए अपने दस्तावेज़ों और जानकारी के सुरक्षित उपयोग हेतु सहमति देता/देती हूँ। मुझे बताया गया है कि insurer submission अलग से मेरी मंजूरी के बाद ही होगा।</label>
+        <label className="claim-check"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> मैं इस claim assistance प्रक्रिया के लिए आवश्यक claim और KYC दस्तावेज़ों के उपयोग हेतु सहमति देता/देती हूँ। मैं केवल जरूरी KYC दस्तावेज़ अपलोड करूंगा/करूंगी। मुझे बताया गया है कि insurer submission अलग से मेरी मंजूरी के बाद ही होगा।</label>
         <button className="claim-primary" disabled={!canPrepare} onClick={prepareClaim}>Prepare claim checklist <span>→</span></button>
         {!canPrepare && <small className="claim-hint">आगे बढ़ने के लिए Policy, RC, Driver DL और accident photos अपलोड करें; वाहन नंबर, दुर्घटना की तारीख/विवरण भरें और दोनों confirmations दें।</small>}
         {notice && <div className="claim-notice" role="status">{notice}</div>}

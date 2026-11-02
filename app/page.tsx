@@ -223,6 +223,7 @@ export default function HomePage() {
           <span>Vahan <strong>AI</strong></span>
         </Link>
         <div className="topbar-actions">
+          <Link className="button button-quiet" href="/dashboard">Dashboard</Link>
           <label className="language-picker">
             <span>{t.language}</span>
             <select value={language} onChange={(event) => setLanguage(event.target.value as Language)}>

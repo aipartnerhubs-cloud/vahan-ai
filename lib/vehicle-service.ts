@@ -17,6 +17,10 @@ export type VehicleResult = {
   verificationScore: number;
   source: string;
   warnings?: string[];
+  variant?: string; vehicleClass?: string; makerModel?: string; color?: string;
+  insurerName?: string; policyNumber?: string; insuranceExpiryDate?: string;
+  pucExpiryDate?: string; taxValidity?: string; financier?: string; ownershipCount?: string;
+  claimsHistory?: string;
 };
 
 const DEFAULT_BASE_URL = 'https://sandbox.surepass.app/api/v1';
@@ -237,9 +241,21 @@ export async function fetchVehicleRecord(
       'Not available'
     ),
     insuranceStatus: asString(
-      readField(data, ['insurance_status', 'insuranceStatus', 'insurance']),
+      readField(data, ['insurance_status', 'insuranceStatus', 'insurance_validity', 'insurance']),
       'Not available'
     ),
+    variant: asString(readField(data, ['variant', 'variant_name', 'vehicle_variant']), ''),
+    vehicleClass: asString(readField(data, ['vehicle_class', 'vehicleClass', 'class']), ''),
+    makerModel: asString(readField(data, ['maker_model', 'makerModel']), ''),
+    color: asString(readField(data, ['color', 'vehicle_color']), ''),
+    insurerName: asString(readField(data, ['insurance_company', 'insurer_name', 'insurance_provider', 'insuranceCompany']), ''),
+    policyNumber: asString(readField(data, ['policy_number', 'insurance_policy_number', 'policyNo']), ''),
+    insuranceExpiryDate: asString(readField(data, ['insurance_upto', 'insurance_expiry_date', 'insurance_valid_upto', 'insuranceExpiryDate']), ''),
+    pucExpiryDate: asString(readField(data, ['puc_upto', 'puc_expiry_date', 'puc_valid_upto']), ''),
+    taxValidity: asString(readField(data, ['tax_upto', 'tax_validity', 'tax_valid_upto']), ''),
+    financier: asString(readField(data, ['financer', 'financier', 'hypothecation']), ''),
+    ownershipCount: asString(readField(data, ['owner_count', 'ownership_count', 'owner_serial_no']), ''),
+    claimsHistory: asString(readField(data, ['claim_history', 'claims_history']), ''),
     fitnessStatus: asString(
       readField(data, ['fitness_status', 'fitnessStatus', 'fitness_validity', 'fit_up_to']),
       'Not available'

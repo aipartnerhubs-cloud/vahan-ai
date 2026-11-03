@@ -21,6 +21,9 @@ export type VehicleResult = {
   insurerName?: string; policyNumber?: string; insuranceExpiryDate?: string;
   pucExpiryDate?: string; taxValidity?: string; financier?: string; ownershipCount?: string;
   claimsHistory?: string;
+  chassisNumber?: string; engineNumber?: string; bodyType?: string; normsType?: string;
+  vehicleCategory?: string; registeredAt?: string; rcExpiryDate?: string; blacklistStatus?: string;
+  manufacturedMonthYear?: string; cubicCapacity?: string; seatingCapacity?: string;
 };
 
 const DEFAULT_BASE_URL = 'https://sandbox.surepass.app/api/v1';
@@ -229,7 +232,7 @@ export async function fetchVehicleRecord(
       'Vehicle'
     ),
     model: asString(
-      readField(data, ['model', 'model_name', 'vehicle_model']),
+      readField(data, ['maker_model', 'model', 'model_name', 'vehicle_model']),
       'Model not available'
     ),
     fuelType: asString(
@@ -241,7 +244,7 @@ export async function fetchVehicleRecord(
       'Not available'
     ),
     insuranceStatus: asString(
-      readField(data, ['insurance_status', 'insuranceStatus', 'insurance_validity', 'insurance']),
+      readField(data, ['insurance_upto', 'insuranceUpto', 'insurance_expiry_date', 'insurance_status', 'insuranceStatus', 'insurance_validity', 'insurance']),
       'Not available'
     ),
     variant: asString(readField(data, ['variant', 'variant_name', 'vehicle_variant']), ''),
@@ -251,11 +254,22 @@ export async function fetchVehicleRecord(
     insurerName: asString(readField(data, ['insurance_company', 'insurer_name', 'insurance_provider', 'insuranceCompany']), ''),
     policyNumber: asString(readField(data, ['policy_number', 'insurance_policy_number', 'policyNo']), ''),
     insuranceExpiryDate: asString(readField(data, ['insurance_upto', 'insurance_expiry_date', 'insurance_valid_upto', 'insuranceExpiryDate']), ''),
-    pucExpiryDate: asString(readField(data, ['puc_upto', 'puc_expiry_date', 'puc_valid_upto']), ''),
+    pucExpiryDate: asString(readField(data, ['pucc_upto', 'puc_upto', 'puccUpto', 'puc_expiry_date', 'puc_valid_upto']), ''),
     taxValidity: asString(readField(data, ['tax_upto', 'tax_validity', 'tax_valid_upto']), ''),
-    financier: asString(readField(data, ['financer', 'financier', 'hypothecation']), ''),
+    financier: asString(readField(data, ['financed', 'financer', 'financier', 'hypothecation']), ''),
     ownershipCount: asString(readField(data, ['owner_count', 'ownership_count', 'owner_serial_no']), ''),
     claimsHistory: asString(readField(data, ['claim_history', 'claims_history']), ''),
+    chassisNumber: asString(readField(data, ['vehicle_chasi_number', 'chassis_number', 'chasi_no']), ''),
+    engineNumber: asString(readField(data, ['vehicle_engine_number', 'engine_number', 'engine_no']), ''),
+    bodyType: asString(readField(data, ['body_type', 'bodyType']), ''),
+    normsType: asString(readField(data, ['norms_type', 'normsType']), ''),
+    vehicleCategory: asString(readField(data, ['vehicle_category_description', 'vehicle_category', 'vehicleCategory']), ''),
+    registeredAt: asString(readField(data, ['registered_at', 'registeredAt', 'rto_name']), ''),
+    rcExpiryDate: asString(readField(data, ['rc_expiry_date', 'rcExpiryDate', 'registration_upto']), ''),
+    blacklistStatus: asString(readField(data, ['blacklist_status', 'blackListStatus']), ''),
+    manufacturedMonthYear: asString(readField(data, ['manufactured_month_year', 'manufacturing_month_year', 'manufacturedMonthYear']), ''),
+    cubicCapacity: asString(readField(data, ['cubic_capacity', 'cubicCapacity', 'cc']), ''),
+    seatingCapacity: asString(readField(data, ['seating_capacity', 'seatingCapacity']), ''),
     fitnessStatus: asString(
       readField(data, ['fitness_status', 'fitnessStatus', 'fitness_validity', 'fit_up_to']),
       'Not available'

@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as Record<string, unknown>;
     const registrationNumber =
       typeof body?.registrationNumber === 'string'
-        ? body.registrationNumber.replace(/[\\s.-]/g, '').toUpperCase()
+        ? body.registrationNumber.replace(/[\s.-]/g, '').toUpperCase()
         : '';
 
     if (!/^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/.test(registrationNumber)) {

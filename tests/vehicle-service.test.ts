@@ -253,3 +253,71 @@ test('handles optional fields missing without crashing', async () => {
     if (previousToken) process.env.VEHICLE_API_TOKEN = previousToken;
   }
 });
+
+
+test('maps StampMitra sandbox RC response and keeps claims history unavailable', async () => {
+  const previousProvider = process.env.VEHICLE_PROVIDER;
+  const previousKey = process.env.STAMPMITRA_API_KEY;
+  const originalFetch = globalThis.fetch;
+  process.env.VEHICLE_PROVIDER = 'stampmitra';
+  process.env.STAMPMITRA_API_KEY = 'sk_test_fixture';
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(String(_input), 'https://api-b2b.stampmitra.in/v1/verify/rc');
+    assert.equal(init?.method, 'POST');
+    assert.deepEqual(JSON.parse(String(init?.body)), { vehicleNumber: 'SB00SA0001' });
+    return new Response(JSON.stringify({
+      referenceId: 'SMV-20261105-TEST001',
+      regNo: 'SB00SA0001',
+      registrationStatus: 'VALID',
+      ownerName: 'SYNTHETIC TEST OWNER',
+      vehicleClass: 'LMV',
+      vehicleManufacturerName: 'TEST MOTORS',
+      model: 'DEMO HATCHBACK',
+      vehicleColor: 'WHITE',
+      chassis: 'SYNTHETIC-CHASSIS',
+      engine: 'SYNTHETIC-ENGINE',
+      registrationDate: '2022-01-15',
+      rcStatus: 'ACTIVE',
+      rcExpiryDate: '2037-01-14',
+      insuranceUpto: '2027-01-14',
+      isCommercial: false
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const result = await fetchVehicleRecord({ registrationNumber: 'SB00SA0001' });
+    assert.equal(result.source, 'stampmitra_rc');
+    assert.equal(result.referenceId, 'SMV-20261105-TEST001');
+    assert.equal(result.registrationNumber, 'SB00SA0001');
+    assert.equal(result.ownerName, 'SYNTHETIC TEST OWNER');
+    assert.equal(result.make, 'TEST MOTORS');
+    assert.equal(result.model, 'DEMO HATCHBACK');
+    assert.equal(result.insuranceStatus, '2027-01-14');
+    assert.equal(result.fitnessStatus, 'Not supplied by StampMitra RC response');
+    assert.equal('claimsHistory' in result, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousProvider) process.env.VEHICLE_PROVIDER = previousProvider;
+    else delete process.env.VEHICLE_PROVIDER;
+    if (previousKey) process.env.STAMPMITRA_API_KEY = previousKey;
+    else delete process.env.STAMPMITRA_API_KEY;
+  }
+});
+
+test('StampMitra provider rejects unsupported sandbox fixture numbers', async () => {
+  const previousProvider = process.env.VEHICLE_PROVIDER;
+  const previousKey = process.env.STAMPMITRA_API_KEY;
+  process.env.VEHICLE_PROVIDER = 'stampmitra';
+  process.env.STAMPMITRA_API_KEY = 'sk_test_fixture';
+  try {
+    await assert.rejects(
+      () => fetchVehicleRecord({ registrationNumber: 'SB00SA9999' }),
+      /Invalid registration number/
+    );
+  } finally {
+    if (previousProvider) process.env.VEHICLE_PROVIDER = previousProvider;
+    else delete process.env.VEHICLE_PROVIDER;
+    if (previousKey) process.env.STAMPMITRA_API_KEY = previousKey;
+    else delete process.env.STAMPMITRA_API_KEY;
+  }
+});

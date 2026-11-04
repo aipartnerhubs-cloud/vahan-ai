@@ -183,13 +183,47 @@ async function fetchSurepassVehicleRecord(
   }
 
   if (!response.ok) {
+    // Read only a small, allow-listed diagnostic subset. Never log the raw
+    // provider body or Authorization header because upstreams can echo secrets.
     const rawText = await response.text().catch(() => '');
-    console.error(
-      'Surepass RC API request failed:',
-      response.status,
-      rawText ? 'upstream error received' : 'no upstream body'
-    );
-    throw new Error('Vehicle verification service is temporarily unavailable.');
+    let upstreamCode = '';
+    let upstreamMessage = '';
+    let requestId = response.headers.get('x-request-id') || response.headers.get('x-correlation-id') || '';
+
+    try {
+      const parsed: unknown = JSON.parse(rawText);
+      if (isRecord(parsed)) {
+        const errorObject = isRecord(parsed.error) ? parsed.error : parsed;
+        upstreamCode = asString(
+          readField(errorObject, ['code', 'error_code', 'type', 'status']),
+          ''
+        ).slice(0, 80);
+        upstreamMessage = asString(
+          readField(errorObject, ['message', 'error_description', 'detail']),
+          ''
+        ).slice(0, 240);
+        requestId = requestId || asString(
+          readField(errorObject, ['request_id', 'requestId', 'trace_id']),
+          ''
+        ).slice(0, 120);
+      }
+    } catch {
+      // Non-JSON responses are common for gateway errors; status is still useful.
+    }
+
+    const safeMessage = upstreamMessage
+      .replace(/Bearer\\s+\\S+/gi, 'Bearer [REDACTED]')
+      .replace(/(token|api[_ -]?key)\\s*[:=]\\s*[^\\s,;]+/gi, '$1=[REDACTED]');
+    console.error('Surepass RC API request failed', {
+      status: response.status,
+      upstreamCode: upstreamCode || undefined,
+      upstreamMessage: safeMessage || undefined,
+      requestId: requestId || undefined,
+      endpoint: new URL(endpoint).origin + new URL(endpoint).pathname,
+      hasSurepassToken: Boolean(process.env.SUREPASS_API_TOKEN),
+      hasFallbackApiKey: Boolean(process.env.VEHICLE_API_KEY || process.env.VEHICLE_API_TOKEN),
+    });
+    throw new Error(`Surepass RC API request failed (HTTP ${response.status}).`);
   }
 
   const payload = await response.json().catch(() => null);

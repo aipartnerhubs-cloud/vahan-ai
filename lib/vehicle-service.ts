@@ -223,7 +223,7 @@ async function fetchSurepassVehicleRecord(
       hasSurepassToken: Boolean(process.env.SUREPASS_API_TOKEN),
       hasFallbackApiKey: Boolean(process.env.VEHICLE_API_KEY || process.env.VEHICLE_API_TOKEN),
     });
-    throw new Error(`Surepass RC API request failed (HTTP ${response.status}).`);
+    throw new Error('Vehicle verification service is temporarily unavailable.');
   }
 
   const payload = await response.json().catch(() => null);

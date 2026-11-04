@@ -16,6 +16,7 @@ export type VehicleResult = {
   fitnessStatus: string;
   verificationScore: number;
   source: string;
+  referenceId?: string;
   warnings?: string[];
   variant?: string; vehicleClass?: string; makerModel?: string; color?: string;
   insurerName?: string; policyNumber?: string; insuranceExpiryDate?: string;
@@ -130,7 +131,7 @@ function getWarnings(payload: unknown): string[] | undefined {
   return warnings.length > 0 ? warnings : undefined;
 }
 
-export async function fetchVehicleRecord(
+async function fetchSurepassVehicleRecord(
   input: VehicleLookupInput
 ): Promise<VehicleResult> {
   const registrationNumber = normalizeRegistrationNumber(input.registrationNumber || '');
@@ -258,7 +259,6 @@ export async function fetchVehicleRecord(
     taxValidity: asString(readField(data, ['tax_upto', 'tax_validity', 'tax_valid_upto']), ''),
     financier: asString(readField(data, ['financed', 'financer', 'financier', 'hypothecation']), ''),
     ownershipCount: asString(readField(data, ['owner_count', 'ownership_count', 'owner_serial_no']), ''),
-    claimsHistory: asString(readField(data, ['claim_history', 'claims_history']), ''),
     chassisNumber: asString(readField(data, ['vehicle_chasi_number', 'chassis_number', 'chasi_no']), ''),
     engineNumber: asString(readField(data, ['vehicle_engine_number', 'engine_number', 'engine_no']), ''),
     bodyType: asString(readField(data, ['body_type', 'bodyType']), ''),
@@ -280,4 +280,121 @@ export async function fetchVehicleRecord(
     source: 'surepass_rc_v2',
     warnings: getWarnings(payload),
   };
+}
+
+
+const STAMPMITRA_BASE_URL = 'https://api-b2b.stampmitra.in';
+
+function stampmitraErrorMessage(status: number): string {
+  if (status === 401) return 'StampMitra sandbox authentication failed. Check the Preview API key.';
+  if (status === 403) return 'StampMitra API key does not have the RC verification scope.';
+  if (status === 429) return 'StampMitra sandbox rate limit reached. Please wait before retrying.';
+  if (status === 502) return 'StampMitra verification service is temporarily unavailable.';
+  return 'StampMitra vehicle verification failed.';
+}
+
+async function fetchStampMitraVehicleRecord(
+  input: VehicleLookupInput
+): Promise<VehicleResult> {
+  const registrationNumber = normalizeRegistrationNumber(input.registrationNumber || '')
+    .replace(/[.\\-]/g, '');
+
+  // StampMitra publishes dedicated synthetic sandbox numbers. Do not allow
+  // these fixture identifiers to pass through to the production Surepass path.
+  const sandboxFixtureNumbers = new Set(['SB00SA0001', 'SB00SA0002', 'SB00SA0004']);
+  const isSandboxFixture = sandboxFixtureNumbers.has(registrationNumber);
+  const isIndianRegistration = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/.test(registrationNumber);
+
+  if (!isIndianRegistration && !isSandboxFixture) {
+    throw new Error('Invalid registration number.');
+  }
+
+  const apiKey = process.env.STAMPMITRA_API_KEY;
+  if (!apiKey) {
+    throw new Error('StampMitra API credentials are not configured.');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${STAMPMITRA_BASE_URL}/v1/verify/rc`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ vehicleNumber: registrationNumber }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message.toLowerCase().includes('abort')) {
+      throw new Error('StampMitra vehicle verification request timed out.');
+    }
+    throw new Error('StampMitra verification service is temporarily unavailable.');
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const requestId = isRecord(payload) && isRecord(payload.error)
+      ? asString(payload.error.requestId, '')
+      : '';
+    console.error('StampMitra RC API request failed:', response.status, requestId || 'no request id');
+    throw new Error(stampmitraErrorMessage(response.status));
+  }
+
+  if (!isRecord(payload)) {
+    throw new Error('StampMitra returned an unexpected response structure.');
+  }
+
+  const returnedRegistrationNumber = normalizeRegistrationNumber(
+    asString(payload.regNo, registrationNumber)
+  ).replace(/[.\\-]/g, '');
+  if (returnedRegistrationNumber !== registrationNumber) {
+    throw new Error('Returned vehicle registration number does not match.');
+  }
+
+  const referenceId = asString(payload.referenceId, '');
+  if (!referenceId) {
+    throw new Error('StampMitra response did not include a reference ID.');
+  }
+
+  return {
+    registrationNumber: returnedRegistrationNumber,
+    status: asString(payload.rcStatus, asString(payload.registrationStatus, 'Not available')),
+    ownerName: asString(payload.ownerName, 'Owner not available'),
+    make: asString(payload.vehicleManufacturerName, 'Vehicle'),
+    model: asString(payload.model, 'Model not available'),
+    fuelType: 'Not supplied by StampMitra RC response',
+    registrationDate: asString(payload.registrationDate, 'Not available'),
+    insuranceStatus: asString(payload.insuranceUpto, 'Not available'),
+    fitnessStatus: 'Not supplied by StampMitra RC response',
+    vehicleClass: asString(payload.vehicleClass, ''),
+    color: asString(payload.vehicleColor, ''),
+    chassisNumber: asString(payload.chassis, ''),
+    engineNumber: asString(payload.engine, ''),
+    rcExpiryDate: asString(payload.rcExpiryDate, ''),
+    verificationScore: 0,
+    source: 'stampmitra_rc',
+    referenceId,
+    warnings: [
+      'StampMitra sandbox returns sample data and does not verify a real vehicle.',
+      'Insurance date is an RC response field, not insurer-confirmed policy status.',
+      'Claim history is not provided by this RC endpoint.',
+    ],
+  };
+}
+
+export async function fetchVehicleRecord(
+  input: VehicleLookupInput
+): Promise<VehicleResult> {
+  const provider = (process.env.VEHICLE_PROVIDER || 'surepass').toLowerCase();
+  if (provider === 'stampmitra') {
+    return fetchStampMitraVehicleRecord(input);
+  }
+  if (provider === 'surepass') {
+    return fetchSurepassVehicleRecord(input);
+  }
+  throw new Error('Configured vehicle provider is not supported.');
 }

@@ -62,3 +62,27 @@ Never put secrets in `NEXT_PUBLIC_*` variables. Keep Surepass disabled while tes
 - Claim endpoint returns no records while no authorized claims provider is configured.
 - Provider source and request/reference ID are auditable without logging API keys or unnecessary personal data.
 - Run `npm test` and `npm run build`; inspect the resulting CI/deployment before promoting.
+
+
+## Implemented StampMitra adapter
+
+The preview branch now supports `VEHICLE_PROVIDER=stampmitra` and calls:
+- `POST https://api-b2b.stampmitra.in/v1/verify/rc`
+- JSON body: `{ "vehicleNumber": "..." }`
+- Header: `Authorization: Bearer <STAMPMITRA_API_KEY>`
+- Required key scope: `verification.rc.read`
+
+The adapter maps only documented RC fields and stores the returned `referenceId`. It does not infer fuel, fitness, insurer, policy number, ownership history, challans, or claims history. `insuranceUpto` is shown as the date returned by the RC record, not as insurer-confirmed coverage.
+
+For the documented StampMitra sandbox fixtures, use:
+- `SB00SA0001` — synthetic active RC
+- `SB00SA0002` — synthetic not-found/invalid result
+- `SB00SA0004` — synthetic expired RC
+
+These identifiers are accepted only when `VEHICLE_PROVIDER=stampmitra`; they are not accepted by the Surepass provider path. The UI labels StampMitra results as sandbox sample data.
+
+For the branch-specific Vercel Preview deployment, set:
+- `STAMPMITRA_API_KEY` = the sandbox key (Secret, Preview, branch `feature/free-testing-stack`)
+- `VEHICLE_PROVIDER` = `stampmitra` (Config, Preview, branch `feature/free-testing-stack`)
+
+Do not set `VEHICLE_PROVIDER=stampmitra` in Production. The default provider remains Surepass.

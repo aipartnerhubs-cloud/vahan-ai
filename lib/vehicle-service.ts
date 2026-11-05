@@ -362,8 +362,21 @@ async function fetchStampMitraVehicleRecord(
       signal: AbortSignal.timeout(20000),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : '';
-    if (message.toLowerCase().includes('abort')) {
+    const errorName = error instanceof Error ? error.name : 'UnknownError';
+    const rawMessage = error instanceof Error ? error.message : 'Request failed';
+    const safeMessage = rawMessage
+      .replace(/Bearer\\s+\\S+/gi, 'Bearer [REDACTED]')
+      .replace(/(token|api[_ -]?key)\\s*[:=]\\s*[^\\s,;]+/gi, '$1=[REDACTED]')
+      .slice(0, 200);
+    // Network-level failures occur before an HTTP response exists. Log only
+    // sanitized error metadata so DNS/TLS/timeout issues can be diagnosed.
+    console.error('StampMitra RC network request failed', {
+      errorName: errorName.slice(0, 80),
+      message: safeMessage,
+      endpoint: STAMPMITRA_BASE_URL + '/v1/verify/rc',
+      hasStampMitraApiKey: Boolean(apiKey),
+    });
+    if (rawMessage.toLowerCase().includes('abort')) {
       throw new Error('StampMitra vehicle verification request timed out.');
     }
     throw new Error('StampMitra verification service is temporarily unavailable.');

@@ -371,10 +371,25 @@ async function fetchStampMitraVehicleRecord(
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    const requestId = isRecord(payload) && isRecord(payload.error)
-      ? asString(payload.error.requestId, '')
+    const errorObject = isRecord(payload) && isRecord(payload.error)
+      ? payload.error
+      : isRecord(payload) ? payload : undefined;
+    const code = errorObject
+      ? asString(readField(errorObject, ['code', 'error_code', 'type']), '')
       : '';
-    console.error('StampMitra RC API request failed:', response.status, requestId || 'no request id');
+    const message = errorObject
+      ? asString(readField(errorObject, ['message', 'detail']), '')
+      : '';
+    const requestId = errorObject
+      ? asString(readField(errorObject, ['requestId', 'request_id']), '')
+      : '';
+    // Log only provider diagnostics; never log the API key or vehicle/owner data.
+    console.error('StampMitra RC API request failed', {
+      status: response.status,
+      code: code.slice(0, 80) || undefined,
+      message: message.slice(0, 240) || undefined,
+      requestId: requestId.slice(0, 120) || undefined,
+    });
     throw new Error(stampmitraErrorMessage(response.status));
   }
 

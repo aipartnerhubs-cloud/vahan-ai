@@ -470,7 +470,7 @@ async function fetchApiExpressVehicleRecord(input: VehicleLookupInput): Promise<
   if (!apiKey) throw new Error('API Express API credentials are not configured.');
 
   // API Express docs specify a separate sandbox host and the same /v1/rc/verify path.
-  const baseUrl = (process.env.APIEXPRESS_BASE_URL || APIEXPRESS_SANDBOX_BASE_URL).replace(/\\/+$/, '');
+  const baseUrl = (process.env.APIEXPRESS_BASE_URL || APIEXPRESS_SANDBOX_BASE_URL).replace(/\/+$/, '');
   let response: Response;
   try {
     response = await fetch(baseUrl + '/v1/rc/verify', {

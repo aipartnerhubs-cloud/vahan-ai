@@ -448,6 +448,116 @@ async function fetchStampMitraVehicleRecord(
   };
 }
 
+
+const APIEXPRESS_SANDBOX_BASE_URL = 'https://sandbox.api.apiexpress.in';
+
+function apiExpressErrorMessage(status: number): string {
+  if (status === 401) return 'API Express sandbox authentication failed. Check APIEXPRESS_API_KEY and sandbox base URL.';
+  if (status === 403) return 'API Express denied this RC request. Check account/API access permissions.';
+  if (status === 404) return 'API Express RC endpoint was not found. Confirm the sandbox endpoint with API Express support.';
+  if (status === 422) return 'API Express rejected the registration number or request format.';
+  if (status === 429) return 'API Express sandbox rate limit reached. Please wait before retrying.';
+  if (status >= 500) return 'API Express RC service is temporarily unavailable.';
+  return 'API Express vehicle verification failed.';
+}
+
+async function fetchApiExpressVehicleRecord(input: VehicleLookupInput): Promise<VehicleResult> {
+  const registrationNumber = normalizeRegistrationNumber(input.registrationNumber || '').replace(/[.\\-]/g, '');
+  const isValid = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/.test(registrationNumber);
+  if (!isValid) throw new Error('Invalid registration number.');
+
+  const apiKey = process.env.APIEXPRESS_API_KEY;
+  if (!apiKey) throw new Error('API Express API credentials are not configured.');
+
+  // API Express docs specify a separate sandbox host and the same /v1/rc/verify path.
+  const baseUrl = (process.env.APIEXPRESS_BASE_URL || APIEXPRESS_SANDBOX_BASE_URL).replace(/\\/+$/, '');
+  let response: Response;
+  try {
+    response = await fetch(baseUrl + '/v1/rc/verify', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ rc_number: registrationNumber }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (error) {
+    const name = error instanceof Error ? error.name : 'UnknownError';
+    console.error('API Express RC network request failed', {
+      errorName: name.slice(0, 80),
+      endpoint: baseUrl + '/v1/rc/verify',
+      hasApiKey: Boolean(apiKey),
+    });
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new Error('API Express vehicle verification request timed out.');
+    }
+    throw new Error('API Express RC service is temporarily unavailable.');
+  }
+
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const errorRecord = isRecord(payload) && isRecord(payload.error) ? payload.error : (isRecord(payload) ? payload : undefined);
+    const code = errorRecord ? asString(readField(errorRecord, ['code', 'error_code', 'type']), '') : '';
+    const requestId = errorRecord ? asString(readField(errorRecord, ['request_id', 'requestId', 'reference_id']), '') : '';
+    console.error('API Express RC API request failed', {
+      status: response.status,
+      code: code.slice(0, 80) || undefined,
+      requestId: requestId.slice(0, 120) || undefined,
+      endpoint: baseUrl + '/v1/rc/verify',
+    });
+    throw new Error(apiExpressErrorMessage(response.status));
+  }
+
+  const data = getResponseData(payload);
+  if (!data) throw new Error('API Express returned an unexpected response structure.');
+
+  const returnedNumber = normalizeRegistrationNumber(
+    asString(readField(data, ['rc_number', 'registration_number', 'registrationNumber']), registrationNumber)
+  ).replace(/[.\\-]/g, '');
+  if (returnedNumber !== registrationNumber) throw new Error('Returned vehicle registration number does not match.');
+
+  const insuranceValid = readField(data, ['insurance_valid', 'insuranceValid']);
+  const insuranceExpiry = asString(readField(data, ['insurance_expiry', 'insurance_expiry_date', 'insuranceExpiry']), '');
+  const insuranceStatus = typeof insuranceValid === 'boolean'
+    ? (insuranceValid ? (insuranceExpiry ? `Valid until ${insuranceExpiry}` : 'Valid (provider response)') : 'Expired / not valid')
+    : asString(readField(data, ['insurance_status', 'insurance_expiry']), 'Not available');
+
+  const referenceId = asString(readField(data, ['reference_id', 'referenceId', 'request_id']), '');
+  return {
+    registrationNumber: returnedNumber,
+    status: asString(readField(data, ['status', 'rc_status', 'registration_status']), 'Verification complete'),
+    ownerName: asString(readField(data, ['owner_name', 'ownerName']), 'Owner not available'),
+    make: asString(readField(data, ['manufacturer', 'make', 'vehicle_make']), 'Vehicle'),
+    model: asString(readField(data, ['maker_model', 'vehicle', 'model']), 'Model not available'),
+    fuelType: asString(readField(data, ['fuel_type', 'fuel']), 'Not available'),
+    registrationDate: asString(readField(data, ['registration_date', 'registrationDate']), 'Not available'),
+    insuranceStatus,
+    fitnessStatus: asString(readField(data, ['fitness_status', 'fitness_validity', 'fitness_valid']), 'Not available'),
+    variant: asString(readField(data, ['variant']), ''),
+    vehicleClass: asString(readField(data, ['vehicle_class', 'vehicleClass']), ''),
+    color: asString(readField(data, ['color', 'vehicle_color']), ''),
+    insurerName: asString(readField(data, ['insurance_company', 'insurer_name']), ''),
+    insuranceExpiryDate: insuranceExpiry,
+    chassisNumber: asString(readField(data, ['chassis_number', 'chassis']), ''),
+    engineNumber: asString(readField(data, ['engine_number', 'engine']), ''),
+    rcExpiryDate: asString(readField(data, ['rc_valid_until', 'rc_expiry_date', 'rcExpiryDate']), ''),
+    registeredAt: asString(readField(data, ['rto_location', 'rto', 'registered_at']), ''),
+    cubicCapacity: asString(readField(data, ['cubic_capacity', 'cc']), ''),
+    seatingCapacity: asString(readField(data, ['seating_capacity']), ''),
+    verificationScore: 0,
+    source: 'api_express_rc',
+    referenceId: referenceId || undefined,
+    warnings: [
+      'API Express sandbox responses are mock data and do not verify a real vehicle.',
+      'Fields not returned by the provider are intentionally left unavailable.',
+      'Claims history and challan details are not confirmed by this RC endpoint.',
+    ],
+  };
+}
+
 export async function fetchVehicleRecord(
   input: VehicleLookupInput
 ): Promise<VehicleResult> {

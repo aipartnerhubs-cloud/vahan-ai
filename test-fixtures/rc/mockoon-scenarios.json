@@ -1,0 +1,53 @@
+{
+  "notice": "SYNTHETIC TEST DATA ONLY. Never present these records as real vehicle or owner data.",
+  "scenarios": [
+    {
+      "name": "valid-private-car",
+      "request": { "registrationNumber": "MH12AB1234" },
+      "response": {
+        "registrationNumber": "MH12AB1234",
+        "status": "TEST_ACTIVE",
+        "ownerName": "SYNTHETIC TEST OWNER",
+        "make": "TEST MOTORS",
+        "model": "DEMO HATCHBACK",
+        "fuelType": "Petrol",
+        "registrationDate": "2022-01-15",
+        "insuranceStatus": "TEST_VALID",
+        "fitnessStatus": "TEST_VALID",
+        "verificationScore": 100,
+        "source": "mockoon_synthetic_fixture",
+        "warnings": ["Synthetic fixture: not a real RC lookup."]
+      }
+    },
+    {
+      "name": "expired-insurance",
+      "request": { "registrationNumber": "MH14CD5678" },
+      "response": {
+        "registrationNumber": "MH14CD5678",
+        "status": "TEST_ACTIVE",
+        "ownerName": "SYNTHETIC TEST OWNER",
+        "make": "TEST MOTORS",
+        "model": "DEMO SEDAN",
+        "fuelType": "Diesel",
+        "registrationDate": "2019-06-10",
+        "insuranceStatus": "TEST_EXPIRED",
+        "fitnessStatus": "TEST_VALID",
+        "verificationScore": 100,
+        "source": "mockoon_synthetic_fixture",
+        "warnings": ["Synthetic fixture: not a real RC lookup."]
+      }
+    },
+    {
+      "name": "not-found",
+      "request": { "registrationNumber": "MH99ZZ9999" },
+      "status": 404,
+      "response": { "error": "SYNTHETIC_NOT_FOUND", "message": "No mock fixture matched." }
+    },
+    {
+      "name": "upstream-unavailable",
+      "request": { "registrationNumber": "MH20XY0001" },
+      "status": 503,
+      "response": { "error": "SYNTHETIC_UPSTREAM_UNAVAILABLE" }
+    }
+  ]
+}

@@ -16,6 +16,7 @@ export type VehicleResult = {
   fitnessStatus: string;
   verificationScore: number;
   source: string;
+  referenceId?: string;
   warnings?: string[];
   variant?: string; vehicleClass?: string; makerModel?: string; color?: string;
   insurerName?: string; policyNumber?: string; insuranceExpiryDate?: string;
@@ -130,7 +131,7 @@ function getWarnings(payload: unknown): string[] | undefined {
   return warnings.length > 0 ? warnings : undefined;
 }
 
-export async function fetchVehicleRecord(
+async function fetchSurepassVehicleRecord(
   input: VehicleLookupInput
 ): Promise<VehicleResult> {
   const registrationNumber = normalizeRegistrationNumber(input.registrationNumber || '');
@@ -182,12 +183,46 @@ export async function fetchVehicleRecord(
   }
 
   if (!response.ok) {
+    // Read only a small, allow-listed diagnostic subset. Never log the raw
+    // provider body or Authorization header because upstreams can echo secrets.
     const rawText = await response.text().catch(() => '');
-    console.error(
-      'Surepass RC API request failed:',
-      response.status,
-      rawText ? 'upstream error received' : 'no upstream body'
-    );
+    let upstreamCode = '';
+    let upstreamMessage = '';
+    let requestId = response.headers.get('x-request-id') || response.headers.get('x-correlation-id') || '';
+
+    try {
+      const parsed: unknown = JSON.parse(rawText);
+      if (isRecord(parsed)) {
+        const errorObject = isRecord(parsed.error) ? parsed.error : parsed;
+        upstreamCode = asString(
+          readField(errorObject, ['code', 'error_code', 'type', 'status']),
+          ''
+        ).slice(0, 80);
+        upstreamMessage = asString(
+          readField(errorObject, ['message', 'error_description', 'detail']),
+          ''
+        ).slice(0, 240);
+        requestId = requestId || asString(
+          readField(errorObject, ['request_id', 'requestId', 'trace_id']),
+          ''
+        ).slice(0, 120);
+      }
+    } catch {
+      // Non-JSON responses are common for gateway errors; status is still useful.
+    }
+
+    const safeMessage = upstreamMessage
+      .replace(/Bearer\\s+\\S+/gi, 'Bearer [REDACTED]')
+      .replace(/(token|api[_ -]?key)\\s*[:=]\\s*[^\\s,;]+/gi, '$1=[REDACTED]');
+    console.error('Surepass RC API request failed', {
+      status: response.status,
+      upstreamCode: upstreamCode || undefined,
+      upstreamMessage: safeMessage || undefined,
+      requestId: requestId || undefined,
+      endpoint: new URL(endpoint).origin + new URL(endpoint).pathname,
+      hasSurepassToken: Boolean(process.env.SUREPASS_API_TOKEN),
+      hasFallbackApiKey: Boolean(process.env.VEHICLE_API_KEY || process.env.VEHICLE_API_TOKEN),
+    });
     throw new Error('Vehicle verification service is temporarily unavailable.');
   }
 
@@ -258,7 +293,6 @@ export async function fetchVehicleRecord(
     taxValidity: asString(readField(data, ['tax_upto', 'tax_validity', 'tax_valid_upto']), ''),
     financier: asString(readField(data, ['financed', 'financer', 'financier', 'hypothecation']), ''),
     ownershipCount: asString(readField(data, ['owner_count', 'ownership_count', 'owner_serial_no']), ''),
-    claimsHistory: asString(readField(data, ['claim_history', 'claims_history']), ''),
     chassisNumber: asString(readField(data, ['vehicle_chasi_number', 'chassis_number', 'chasi_no']), ''),
     engineNumber: asString(readField(data, ['vehicle_engine_number', 'engine_number', 'engine_no']), ''),
     bodyType: asString(readField(data, ['body_type', 'bodyType']), ''),
@@ -280,4 +314,263 @@ export async function fetchVehicleRecord(
     source: 'surepass_rc_v2',
     warnings: getWarnings(payload),
   };
+}
+
+
+const STAMPMITRA_BASE_URL = 'https://api-b2b.stampmitra.in';
+
+function stampmitraErrorMessage(status: number): string {
+  if (status === 401) return 'StampMitra sandbox authentication failed. Check the Preview API key.';
+  if (status === 403) return 'StampMitra API key does not have the RC verification scope.';
+  if (status === 429) return 'StampMitra sandbox rate limit reached. Please wait before retrying.';
+  if (status === 502) return 'StampMitra verification service is temporarily unavailable.';
+  return 'StampMitra vehicle verification failed.';
+}
+
+async function fetchStampMitraVehicleRecord(
+  input: VehicleLookupInput
+): Promise<VehicleResult> {
+  const registrationNumber = normalizeRegistrationNumber(input.registrationNumber || '')
+    .replace(/[.\\-]/g, '');
+
+  // StampMitra publishes dedicated synthetic sandbox numbers. Do not allow
+  // these fixture identifiers to pass through to the production Surepass path.
+  const sandboxFixtureNumbers = new Set(['SB00SA0001', 'SB00SA0002', 'SB00SA0004']);
+  const isSandboxFixture = sandboxFixtureNumbers.has(registrationNumber);
+  const isIndianRegistration = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/.test(registrationNumber);
+
+  if (!isIndianRegistration && !isSandboxFixture) {
+    throw new Error('Invalid registration number.');
+  }
+
+  const apiKey = process.env.STAMPMITRA_API_KEY;
+  if (!apiKey) {
+    throw new Error('StampMitra API credentials are not configured.');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${STAMPMITRA_BASE_URL}/v1/verify/rc`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ vehicleNumber: registrationNumber }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : 'UnknownError';
+    const rawMessage = error instanceof Error ? error.message : 'Request failed';
+    const safeMessage = rawMessage
+      .replace(/Bearer\\s+\\S+/gi, 'Bearer [REDACTED]')
+      .replace(/(token|api[_ -]?key)\\s*[:=]\\s*[^\\s,;]+/gi, '$1=[REDACTED]')
+      .slice(0, 200);
+    // Network-level failures occur before an HTTP response exists. Log only
+    // sanitized error metadata so DNS/TLS/timeout issues can be diagnosed.
+    console.error('StampMitra RC network request failed', {
+      errorName: errorName.slice(0, 80),
+      message: safeMessage,
+      endpoint: STAMPMITRA_BASE_URL + '/v1/verify/rc',
+      hasStampMitraApiKey: Boolean(apiKey),
+    });
+    if (rawMessage.toLowerCase().includes('abort')) {
+      throw new Error('StampMitra vehicle verification request timed out.');
+    }
+    throw new Error('StampMitra verification service is temporarily unavailable.');
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const errorObject = isRecord(payload) && isRecord(payload.error)
+      ? payload.error
+      : isRecord(payload) ? payload : undefined;
+    const code = errorObject
+      ? asString(readField(errorObject, ['code', 'error_code', 'type']), '')
+      : '';
+    const message = errorObject
+      ? asString(readField(errorObject, ['message', 'detail']), '')
+      : '';
+    const requestId = errorObject
+      ? asString(readField(errorObject, ['requestId', 'request_id']), '')
+      : '';
+    // Log only provider diagnostics; never log the API key or vehicle/owner data.
+    console.error('StampMitra RC API request failed', {
+      status: response.status,
+      code: code.slice(0, 80) || undefined,
+      message: message.slice(0, 240) || undefined,
+      requestId: requestId.slice(0, 120) || undefined,
+    });
+    throw new Error(stampmitraErrorMessage(response.status));
+  }
+
+  if (!isRecord(payload)) {
+    throw new Error('StampMitra returned an unexpected response structure.');
+  }
+
+  const returnedRegistrationNumber = normalizeRegistrationNumber(
+    asString(payload.regNo, registrationNumber)
+  ).replace(/[.\\-]/g, '');
+  if (returnedRegistrationNumber !== registrationNumber) {
+    throw new Error('Returned vehicle registration number does not match.');
+  }
+
+  const referenceId = asString(payload.referenceId, '');
+  if (!referenceId) {
+    throw new Error('StampMitra response did not include a reference ID.');
+  }
+
+  return {
+    registrationNumber: returnedRegistrationNumber,
+    status: asString(payload.rcStatus, asString(payload.registrationStatus, 'Not available')),
+    ownerName: asString(payload.ownerName, 'Owner not available'),
+    make: asString(payload.vehicleManufacturerName, 'Vehicle'),
+    model: asString(payload.model, 'Model not available'),
+    fuelType: 'Not supplied by StampMitra RC response',
+    registrationDate: asString(payload.registrationDate, 'Not available'),
+    insuranceStatus: asString(payload.insuranceUpto, 'Not available'),
+    fitnessStatus: 'Not supplied by StampMitra RC response',
+    vehicleClass: asString(payload.vehicleClass, ''),
+    color: asString(payload.vehicleColor, ''),
+    chassisNumber: asString(payload.chassis, ''),
+    engineNumber: asString(payload.engine, ''),
+    rcExpiryDate: asString(payload.rcExpiryDate, ''),
+    verificationScore: 0,
+    source: 'stampmitra_rc',
+    referenceId,
+    warnings: [
+      'StampMitra sandbox returns sample data and does not verify a real vehicle.',
+      'Insurance date is an RC response field, not insurer-confirmed policy status.',
+      'Claim history is not provided by this RC endpoint.',
+    ],
+  };
+}
+
+
+// API Express documents this base URL for the RC endpoint. Sandbox behavior is selected by the sk_test_ key; do not invent a separate sandbox hostname.
+const APIEXPRESS_SANDBOX_BASE_URL = 'https://api.apiexpress.in';
+
+function apiExpressErrorMessage(status: number): string {
+  if (status === 401) return 'API Express sandbox authentication failed. Check APIEXPRESS_API_KEY and sandbox base URL.';
+  if (status === 403) return 'API Express denied this RC request. Check account/API access permissions.';
+  if (status === 404) return 'API Express RC endpoint was not found. Confirm the sandbox endpoint with API Express support.';
+  if (status === 422) return 'API Express rejected the registration number or request format.';
+  if (status === 429) return 'API Express sandbox rate limit reached. Please wait before retrying.';
+  if (status >= 500) return 'API Express RC service is temporarily unavailable.';
+  return 'API Express vehicle verification failed.';
+}
+
+async function fetchApiExpressVehicleRecord(input: VehicleLookupInput): Promise<VehicleResult> {
+  const registrationNumber = normalizeRegistrationNumber(input.registrationNumber || '').replace(/[.\\-]/g, '');
+  const isValid = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/.test(registrationNumber);
+  if (!isValid) throw new Error('Invalid registration number.');
+
+  const apiKey = process.env.APIEXPRESS_API_KEY;
+  if (!apiKey) throw new Error('API Express API credentials are not configured.');
+
+  // API Express docs specify a separate sandbox host and the same /v1/rc/verify path.
+  const baseUrl = (process.env.APIEXPRESS_BASE_URL || APIEXPRESS_SANDBOX_BASE_URL).replace(/\/+$/, '');
+  let response: Response;
+  try {
+    response = await fetch(baseUrl + '/v1/rc/verify', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ rc_number: registrationNumber }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (error) {
+    const name = error instanceof Error ? error.name : 'UnknownError';
+    console.error('API Express RC network request failed', {
+      errorName: name.slice(0, 80),
+      endpoint: baseUrl + '/v1/rc/verify',
+      hasApiKey: Boolean(apiKey),
+    });
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new Error('API Express vehicle verification request timed out.');
+    }
+    throw new Error('API Express RC service is temporarily unavailable.');
+  }
+
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const errorRecord = isRecord(payload) && isRecord(payload.error) ? payload.error : (isRecord(payload) ? payload : undefined);
+    const code = errorRecord ? asString(readField(errorRecord, ['code', 'error_code', 'type']), '') : '';
+    const requestId = errorRecord ? asString(readField(errorRecord, ['request_id', 'requestId', 'reference_id']), '') : '';
+    console.error('API Express RC API request failed', {
+      status: response.status,
+      code: code.slice(0, 80) || undefined,
+      requestId: requestId.slice(0, 120) || undefined,
+      endpoint: baseUrl + '/v1/rc/verify',
+    });
+    throw new Error(apiExpressErrorMessage(response.status));
+  }
+
+  const data = getResponseData(payload);
+  if (!data) throw new Error('API Express returned an unexpected response structure.');
+
+  const returnedNumber = normalizeRegistrationNumber(
+    asString(readField(data, ['rc_number', 'registration_number', 'registrationNumber']), registrationNumber)
+  ).replace(/[.\\-]/g, '');
+  if (returnedNumber !== registrationNumber) throw new Error('Returned vehicle registration number does not match.');
+
+  const insuranceValid = readField(data, ['insurance_valid', 'insuranceValid']);
+  const insuranceExpiry = asString(readField(data, ['insurance_expiry', 'insurance_expiry_date', 'insuranceExpiry']), '');
+  const insuranceStatus = typeof insuranceValid === 'boolean'
+    ? (insuranceValid ? (insuranceExpiry ? `Valid until ${insuranceExpiry}` : 'Valid (provider response)') : 'Expired / not valid')
+    : asString(readField(data, ['insurance_status', 'insurance_expiry']), 'Not available');
+
+  const referenceId = asString(readField(data, ['reference_id', 'referenceId', 'request_id']), '');
+  return {
+    registrationNumber: returnedNumber,
+    status: asString(readField(data, ['status', 'rc_status', 'registration_status']), 'Verification complete'),
+    ownerName: asString(readField(data, ['owner_name', 'ownerName']), 'Owner not available'),
+    make: asString(readField(data, ['manufacturer', 'make', 'vehicle_make']), 'Vehicle'),
+    model: asString(readField(data, ['maker_model', 'vehicle', 'model']), 'Model not available'),
+    fuelType: asString(readField(data, ['fuel_type', 'fuel']), 'Not available'),
+    registrationDate: asString(readField(data, ['registration_date', 'registrationDate']), 'Not available'),
+    insuranceStatus,
+    fitnessStatus: asString(readField(data, ['fitness_status', 'fitness_validity', 'fitness_valid']), 'Not available'),
+    variant: asString(readField(data, ['variant']), ''),
+    vehicleClass: asString(readField(data, ['vehicle_class', 'vehicleClass']), ''),
+    color: asString(readField(data, ['color', 'vehicle_color']), ''),
+    insurerName: asString(readField(data, ['insurance_company', 'insurer_name']), ''),
+    insuranceExpiryDate: insuranceExpiry,
+    chassisNumber: asString(readField(data, ['chassis_number', 'chassis']), ''),
+    engineNumber: asString(readField(data, ['engine_number', 'engine']), ''),
+    rcExpiryDate: asString(readField(data, ['rc_valid_until', 'rc_expiry_date', 'rcExpiryDate']), ''),
+    registeredAt: asString(readField(data, ['rto_location', 'rto', 'registered_at']), ''),
+    cubicCapacity: asString(readField(data, ['cubic_capacity', 'cc']), ''),
+    seatingCapacity: asString(readField(data, ['seating_capacity']), ''),
+    verificationScore: 0,
+    source: 'api_express_rc',
+    referenceId: referenceId || undefined,
+    warnings: [
+      'API Express sandbox responses are mock data and do not verify a real vehicle.',
+      'Fields not returned by the provider are intentionally left unavailable.',
+      'Claims history and challan details are not confirmed by this RC endpoint.',
+    ],
+  };
+}
+
+export async function fetchVehicleRecord(
+  input: VehicleLookupInput
+): Promise<VehicleResult> {
+  const provider = (process.env.VEHICLE_PROVIDER || 'surepass').toLowerCase();
+  if (provider === 'apiexpress' || provider === 'api_express') {
+    return fetchApiExpressVehicleRecord(input);
+  }
+  if (provider === 'stampmitra') {
+    return fetchStampMitraVehicleRecord(input);
+  }
+  if (provider === 'surepass') {
+    return fetchSurepassVehicleRecord(input);
+  }
+  throw new Error('Configured vehicle provider is not supported.');
 }

@@ -6,7 +6,7 @@ const emptyForm = { registrationNumber: '', chassisNumber: '', engineNumber: '' 
 type VehicleResult = {
   registrationNumber: string; status: string; ownerName: string; make: string; model: string;
   fuelType: string; registrationDate: string; insuranceStatus: string; fitnessStatus: string;
-  verificationScore: number; source: string; warnings?: string[];
+  verificationScore: number; source: string; referenceId?: string; warnings?: string[];
   variant?: string; vehicleClass?: string; makerModel?: string; color?: string;
   insurerName?: string; policyNumber?: string; insuranceExpiryDate?: string;
   pucExpiryDate?: string; taxValidity?: string; financier?: string; ownershipCount?: string;
@@ -41,7 +41,7 @@ export default function HomePage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault(); setLoading(true); setError(''); setResult(null); setActiveTab('overview');
     const registrationNumber = form.registrationNumber.replace(/[^a-zA-Z0-9]/g,'').toUpperCase();
-    if (!/^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/.test(registrationNumber)) { setError('Enter a valid Indian registration number, e.g. MH12AB1234.'); setLoading(false); return; }
+    if (!/^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/.test(registrationNumber) && !['SB00SA0001','SB00SA0002','SB00SA0004'].includes(registrationNumber)) { setError('Enter a valid Indian registration number, e.g. MH12AB1234.'); setLoading(false); return; }
     try {
       const response = await fetch('/api/rc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({registrationNumber,chassisNumber:form.chassisNumber.trim(),engineNumber:form.engineNumber.trim()})});
       const data = await response.json().catch(()=>({}));
@@ -71,7 +71,7 @@ export default function HomePage() {
       <div className="hero-car" aria-hidden="true">🚙</div>
     </section>
     <section className="lookup-panel">
-      <div className="section-heading"><span className="heading-icon">⌕</span><div><h2>Find your vehicle</h2><p>Enter registration number to fetch available verified records</p></div></div>
+      <div className="section-heading"><span className="heading-icon">⌕</span><div><h2>Find your vehicle</h2><p>Enter registration number to fetch available provider records. Sandbox fixture numbers are synthetic.</p></div></div>
       <form className="lookup-form" onSubmit={handleSubmit}>
         <label className="registration-input"><span>🇮🇳</span><input aria-label="Vehicle registration number" value={form.registrationNumber} onChange={e=>setForm({...form,registrationNumber:e.target.value.toUpperCase()})} placeholder="e.g. MH12AB1234" maxLength={15} autoCapitalize="characters" required/><button type="submit" disabled={loading}>{loading?'…':'⌕'}</button></label>
         <div className="optional-fields"><input aria-label="Chassis number optional" placeholder="Chassis number (optional)" value={form.chassisNumber} onChange={e=>setForm({...form,chassisNumber:e.target.value.toUpperCase()})}/><input aria-label="Engine number optional" placeholder="Engine number (optional)" value={form.engineNumber} onChange={e=>setForm({...form,engineNumber:e.target.value.toUpperCase()})}/></div>
@@ -93,8 +93,8 @@ export default function HomePage() {
         {activeTab==='insurance' && <><h3>🛡 Insurance Details</h3><div className="detail-grid">{field('Insurance validity / status',result.insuranceStatus)}{field('Insurance company',result.insurerName)}{field('Policy number',result.policyNumber)}{field('Policy expiry date',result.insuranceExpiryDate)}</div><p className="data-note">Insurance information depends on the fields returned by the connected RC provider. Missing values are not inferred. A separate insurer/policy-history API may be required for complete previous policy details.</p></>}
         {activeTab==='claims' && <><h3>✚ Claim Information</h3><div className="detail-grid">{field('Claims history',result.claimsHistory)}</div><p className="data-note">Claim records are not guaranteed in an RC response. A permitted insurer or claims-data integration is required to retrieve them.</p></>}
         {activeTab==='history' && <><h3>↺ Vehicle History</h3><div className="detail-grid">{field('Ownership count',result.ownershipCount)}{field('Registration date',result.registrationDate)}{field('Financier / hypothecation',result.financier)}</div><p className="data-note">Only history fields supplied by the provider can be displayed here.</p></>}
-        <div className="source-note">Data source: {result.source || 'Configured provider'} · Status: {result.status}</div>
-        {result.warnings?.length ? <ul className="warning-list">{result.warnings.map(w=><li key={w}>{w}</li>)}</ul>:null}
+        <div className="source-note">Data source: {result.source || 'Configured provider'} · Status: {result.status}{result.referenceId ? ' · Reference: '+result.referenceId : ''}</div>
+        {result.source === 'stampmitra_rc' ? <p className="data-note">Sandbox mode: StampMitra returns synthetic sample data, not a real vehicle record.</p> : null}{result.warnings?.length ? <ul className="warning-list">{result.warnings.map(w=><li key={w}>{w}</li>)}</ul>:null}
       </div>
     </section>}
     <footer className="bottom-nav"><a className="selected" href="#top">⌂<small>Home</small></a><a href="#lookup">🚘<small>My Vehicles</small></a><a className="ask-ai" href="mailto:ai.partnerhubs@gmail.com">✦<small>Ask AI</small></a><a href="#alerts">♡<small>Alerts</small></a><a href="#profile">♙<small>Profile</small></a></footer>

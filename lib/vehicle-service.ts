@@ -449,7 +449,8 @@ async function fetchStampMitraVehicleRecord(
 }
 
 
-const APIEXPRESS_SANDBOX_BASE_URL = 'https://sandbox.api.apiexpress.in';
+// API Express documents this base URL for the RC endpoint. Sandbox behavior is selected by the sk_test_ key; do not invent a separate sandbox hostname.
+const APIEXPRESS_SANDBOX_BASE_URL = 'https://api.apiexpress.in';
 
 function apiExpressErrorMessage(status: number): string {
   if (status === 401) return 'API Express sandbox authentication failed. Check APIEXPRESS_API_KEY and sandbox base URL.';
@@ -562,6 +563,9 @@ export async function fetchVehicleRecord(
   input: VehicleLookupInput
 ): Promise<VehicleResult> {
   const provider = (process.env.VEHICLE_PROVIDER || 'surepass').toLowerCase();
+  if (provider === 'apiexpress' || provider === 'api_express') {
+    return fetchApiExpressVehicleRecord(input);
+  }
   if (provider === 'stampmitra') {
     return fetchStampMitraVehicleRecord(input);
   }
